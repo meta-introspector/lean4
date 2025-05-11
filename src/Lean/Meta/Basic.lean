@@ -204,7 +204,7 @@ def Config.toKey (c : Config) : UInt64 :=
 
 /-- Configuration with key produced by `Config.toKey`. -/
 structure ConfigWithKey where
-
+  mk :: 
   config : Config
   key    : UInt64
   deriving Inhabited
@@ -287,7 +287,7 @@ structure FunInfo where
 Key for the function information cache.
 -/
 structure InfoCacheKey where
-
+  mk ::
   /-- key produced using `Config.toKey`. -/
   configKey : UInt64
   /-- The function being cached information about. It is quite often an `Expr.const`. -/
