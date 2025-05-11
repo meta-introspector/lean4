@@ -539,7 +539,7 @@ structure Environment where
   Private view should correspond to kernel map. Public view may contain fewer constants and less
   data per constant.
   -/
-  asyncConstsMap : AsyncConsts := default
+  asyncConstsMap : VisibilityMap AsyncConsts := default
   /-- Information about this asynchronous branch of the environment, if any. -/
   asyncCtx?   : Option AsyncContext := none
   /--
