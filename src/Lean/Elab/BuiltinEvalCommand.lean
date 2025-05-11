@@ -153,7 +153,7 @@ private def mkMessageData (e : Expr) : MetaM Expr := do
   <|> (return mkApp (mkConst ``MessageData.ofFormat) (← mkFormat e))
   <|> do throwError m!"could not synthesize a 'ToExpr', 'Repr', or 'ToString' instance for type{indentExpr (← inferType e)}"
 
-private structure EvalAction where
+structure EvalAction where
   eval : CommandElabM MessageData
   /-- Whether to print the result of evaluation.
   If `some`, the expression is what type to use for the type ascription when `pp.type` is true. -/

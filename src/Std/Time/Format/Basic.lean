@@ -1274,7 +1274,7 @@ private def FormatType (result : Type) : FormatString → Type
 
 namespace GenericFormat
 
-private structure DateBuilder where
+structure DateBuilder where
   G : Option Year.Era := none
   y : Option Year.Offset := none
   u : Option Year.Offset := none

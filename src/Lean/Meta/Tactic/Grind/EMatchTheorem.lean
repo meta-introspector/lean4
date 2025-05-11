@@ -20,7 +20,7 @@ namespace Lean.Meta.Grind
 def mkOffsetPattern (pat : Expr) (k : Nat) : Expr :=
   mkApp2 (mkConst ``Grind.offset) pat (mkRawNatLit k)
 
-private def detectOffsets (pat : Expr) : MetaM Expr := do
+def detectOffsets (pat : Expr) : MetaM Expr := do
   let pre (e : Expr) := do
     if e == pat then
       -- We only consider nested offset patterns
@@ -51,7 +51,7 @@ def isEqBwdPattern? (e : Expr) : Option (Expr × Expr) :=
   some (lhs, rhs)
 
 -- Configuration for the `grind` normalizer. We want both `zetaDelta` and `zeta`
-private def normConfig : Grind.Config := {}
+def normConfig : Grind.Config := {}
 theorem normConfig_zeta : normConfig.zeta = true := rfl
 theorem normConfig_zetaDelta : normConfig.zetaDelta = true := rfl
 
@@ -101,7 +101,7 @@ inductive EMatchTheoremKind where
   | eqLhs | eqRhs | eqBoth | eqBwd | fwd | bwd | leftRight | rightLeft | default | user /- pattern specified using `grind_pattern` command -/
   deriving Inhabited, BEq, Repr, Hashable
 
-private def EMatchTheoremKind.toAttribute : EMatchTheoremKind → String
+def EMatchTheoremKind.toAttribute : EMatchTheoremKind → String
   | .eqLhs     => "[grind =]"
   | .eqRhs     => "[grind =_]"
   | .eqBoth    => "[grind _=_]"
@@ -113,7 +113,7 @@ private def EMatchTheoremKind.toAttribute : EMatchTheoremKind → String
   | .default   => "[grind]"
   | .user      => "[grind]"
 
-private def EMatchTheoremKind.explainFailure : EMatchTheoremKind → String
+def EMatchTheoremKind.explainFailure : EMatchTheoremKind → String
   | .eqLhs     => "failed to find pattern in the left-hand side of the theorem's conclusion"
   | .eqRhs     => "failed to find pattern in the right-hand side of the theorem's conclusion"
   | .eqBoth    => unreachable! -- eqBoth is a macro
@@ -246,9 +246,9 @@ This is because `grind` performs normalization operations and uses specialized d
 to implement these symbols, which may interfere with E-matching behavior.
 -/
 -- TODO: create attribute?
-private def forbiddenDeclNames := #[``Eq, ``HEq, ``Iff, ``And, ``Or, ``Not]
+def forbiddenDeclNames := #[``Eq, ``HEq, ``Iff, ``And, ``Or, ``Not]
 
-private def isForbidden (declName : Name) := forbiddenDeclNames.contains declName
+def isForbidden (declName : Name) := forbiddenDeclNames.contains declName
 
 /--
 Auxiliary function to expand a pattern containing forbidden application symbols
@@ -277,7 +277,7 @@ partial def splitWhileForbidden (pat : Expr) : List Expr :=
   | HEq _ lhs _ rhs => splitWhileForbidden lhs ++ splitWhileForbidden rhs
   | _ => [pat]
 
-private def dontCare := mkConst (Name.mkSimple "[grind_dontcare]")
+def dontCare := mkConst (Name.mkSimple "[grind_dontcare]")
 
 def mkGroundPattern (e : Expr) : Expr :=
   mkAnnotation `grind.ground_pat e
@@ -285,13 +285,13 @@ def mkGroundPattern (e : Expr) : Expr :=
 def groundPattern? (e : Expr) : Option Expr :=
   annotation? `grind.ground_pat e
 
-private def isGroundPattern (e : Expr) : Bool :=
+def isGroundPattern (e : Expr) : Bool :=
   groundPattern? e |>.isSome
 
 def isPatternDontCare (e : Expr) : Bool :=
   e == dontCare
 
-private def isAtomicPattern (e : Expr) : Bool :=
+def isAtomicPattern (e : Expr) : Bool :=
   e.isBVar || isPatternDontCare e || isGroundPattern e
 
 partial def ppPattern (pattern : Expr) : MessageData := Id.run do
@@ -327,14 +327,14 @@ structure State where
 
 abbrev M := StateRefT State MetaM
 
-private def saveSymbol (h : HeadIndex) : M Unit := do
+def saveSymbol (h : HeadIndex) : M Unit := do
   unless (← get).symbolSet.contains h do
     modify fun s => { s with symbols := s.symbols.push h, symbolSet := s.symbolSet.insert h }
 
-private def foundBVar (idx : Nat) : M Bool :=
+def foundBVar (idx : Nat) : M Bool :=
   return (← get).bvarsFound.contains idx
 
-private def saveBVar (idx : Nat) : M Unit := do
+def saveBVar (idx : Nat) : M Unit := do
   modify fun s => { s with bvarsFound := s.bvarsFound.insert idx }
 
 inductive PatternArgKind where
@@ -401,7 +401,7 @@ def getPatternArgKinds (f : Expr) (numArgs : Nat) : MetaM (Array PatternArgKind)
       else
         return .relevant
 
-private def getPatternFn? (pattern : Expr) (inSupport : Bool) (argKind : PatternArgKind) : MetaM (Option Expr) := do
+def getPatternFn? (pattern : Expr) (inSupport : Bool) (argKind : PatternArgKind) : MetaM (Option Expr) := do
   if !pattern.isApp && !pattern.isConst then
     return none
   else match pattern.getAppFn with
@@ -419,7 +419,7 @@ private def getPatternFn? (pattern : Expr) (inSupport : Bool) (argKind : Pattern
     | _ =>
       return none
 
-private partial def go (pattern : Expr) (inSupport : Bool) : M Expr := do
+partial def go (pattern : Expr) (inSupport : Bool) : M Expr := do
   if let some (e, k) := isOffsetPattern? pattern then
     let e ← goArg e inSupport .relevant
     if e == dontCare then
@@ -471,7 +471,7 @@ end NormalizePattern
 Returns `true` if free variables in `type` are not in `thmVars` or are in `fvarsFound`.
 We use this function to check whether `type` is fully instantiated.
 -/
-private def checkTypeFVars (thmVars : FVarIdSet) (fvarsFound : FVarIdSet) (type : Expr) : Bool :=
+def checkTypeFVars (thmVars : FVarIdSet) (fvarsFound : FVarIdSet) (type : Expr) : Bool :=
   let typeFVars := (collectFVars {} type).fvarIds
   typeFVars.all fun fvarId => !thmVars.contains fvarId || fvarsFound.contains fvarId
 
@@ -481,7 +481,7 @@ Given an type class instance type `instType`, returns true if free variables in 
 2- are in `fvarsFound`.
 Remark: `fvarsFound` is a subset of `thmVars`
 -/
-private def canBeSynthesized (thmVars : FVarIdSet) (fvarsFound : FVarIdSet) (instType : Expr) : MetaM Bool := do
+def canBeSynthesized (thmVars : FVarIdSet) (fvarsFound : FVarIdSet) (instType : Expr) : MetaM Bool := do
   forallTelescopeReducing instType fun xs type => type.withApp fun classFn classArgs => do
     for x in xs do
       unless checkTypeFVars thmVars fvarsFound (← inferType x) do return false
@@ -515,7 +515,7 @@ The missing parameters:
 
 For type class instance parameters, we must check whether the free variables in class input parameters are available.
 -/
-private def checkCoverage (thmProof : Expr) (numParams : Nat) (bvarsFound : Std.HashSet Nat) : MetaM CheckCoverageResult := do
+def checkCoverage (thmProof : Expr) (numParams : Nat) (bvarsFound : Std.HashSet Nat) : MetaM CheckCoverageResult := do
   if bvarsFound.size == numParams then return .ok
   forallBoundedTelescope (← inferType thmProof) numParams fun xs _ => do
     assert! numParams == xs.size
@@ -578,7 +578,7 @@ private def checkCoverage (thmProof : Expr) (numParams : Nat) (bvarsFound : Std.
 Given a theorem with proof `proof` and `numParams` parameters, returns a message
 containing the parameters at positions `paramPos`.
 -/
-private def ppParamsAt (proof : Expr) (numParams : Nat) (paramPos : List Nat) : MetaM MessageData := do
+def ppParamsAt (proof : Expr) (numParams : Nat) (paramPos : List Nat) : MetaM MessageData := do
   forallBoundedTelescope (← inferType proof) numParams fun xs _ => do
     let mut msg := m!""
     let mut first := true
@@ -606,7 +606,7 @@ def mkEMatchTheoremCore (origin : Origin) (levelParams : Array Name) (numParams 
     levelParams, origin, kind
   }
 
-private def getProofFor (declName : Name) : MetaM Expr := do
+def getProofFor (declName : Name) : MetaM Expr := do
   let info ← getConstInfo declName
   -- For theorems, `isProp` has already been checked at declaration time
   unless wasOriginallyTheorem (← getEnv) declName do
@@ -679,18 +679,18 @@ def getEMatchTheorems : CoreM EMatchTheorems :=
   return ematchTheoremsExt.getState (← getEnv)
 
 /-- Returns the types of `xs` that are propositions. -/
-private def getPropTypes (xs : Array Expr) : MetaM (Array Expr) :=
+def getPropTypes (xs : Array Expr) : MetaM (Array Expr) :=
   xs.filterMapM fun x => do
     let type ← inferType x
     if (← isProp type) then return some type else return none
 
 /-- State for the (pattern) `CollectorM` monad -/
-private structure Collector.State where
+structure Collector.State where
   /-- Pattern found so far. -/
   patterns  : Array Expr := #[]
   done      : Bool := false
 
-private structure Collector.Context where
+structure Collector.Context where
   proof : Expr
   xs    : Array Expr
 
@@ -698,13 +698,13 @@ private structure Collector.Context where
 private abbrev CollectorM := ReaderT Collector.Context $ StateRefT Collector.State NormalizePattern.M
 
 /-- Similar to `getPatternFn?`, but operates on expressions that do not contain loose de Bruijn variables. -/
-private def isPatternFnCandidate (f : Expr) : CollectorM Bool := do
+def isPatternFnCandidate (f : Expr) : CollectorM Bool := do
   match f with
   | .const declName _ => return !isForbidden declName
   | .fvar .. => return !(← read).xs.contains f
   | _ => return false
 
-private def addNewPattern (p : Expr) : CollectorM Unit := do
+def addNewPattern (p : Expr) : CollectorM Unit := do
   trace[grind.debug.ematch.pattern] "found pattern: {ppPattern p}"
   let bvarsFound := (← getThe NormalizePattern.State).bvarsFound
   let done := (← checkCoverage (← read).proof (← read).xs.size bvarsFound) matches .ok
@@ -713,7 +713,7 @@ private def addNewPattern (p : Expr) : CollectorM Unit := do
   modify fun s => { s with patterns := s.patterns.push p, done }
 
 /-- Collect the pattern (i.e., de Bruijn) variables in the given pattern. -/
-private def collectPatternBVars (p : Expr) : List Nat :=
+def collectPatternBVars (p : Expr) : List Nat :=
   go p |>.run [] |>.2
 where
   go (e : Expr) : StateM (List Nat) Unit := do
@@ -723,7 +723,7 @@ where
     | .bvar idx   => modify fun s => if s.contains idx then s else idx :: s
     | _           => return ()
 
-private def diff (s : List Nat) (found : Std.HashSet Nat) : List Nat :=
+def diff (s : List Nat) (found : Std.HashSet Nat) : List Nat :=
   if found.isEmpty then s else s.filter fun x => !found.contains x
 
 /--
@@ -733,7 +733,7 @@ Returns `true` if pattern `p` contains a child `c` such that
 3- `c` is not an offset pattern.
 4- `c` is not a bound variable.
 -/
-private def hasChildWithSameNewBVars (p : Expr)
+def hasChildWithSameNewBVars (p : Expr)
     (argKinds : Array NormalizePattern.PatternArgKind) (alreadyFound : Std.HashSet Nat) : CoreM Bool := do
   let s := diff (collectPatternBVars p) alreadyFound
   for arg in p.getAppArgs, argKind in argKinds do
@@ -745,7 +745,7 @@ private def hasChildWithSameNewBVars (p : Expr)
         return true
   return false
 
-private partial def collect (e : Expr) : CollectorM Unit := do
+partial def collect (e : Expr) : CollectorM Unit := do
   if (← get).done then return ()
   match e with
   | .app .. =>
@@ -783,7 +783,7 @@ private partial def collect (e : Expr) : CollectorM Unit := do
       collect b
   | _ => return ()
 
-private def collectPatterns? (proof : Expr) (xs : Array Expr) (searchPlaces : Array Expr) : MetaM (Option (List Expr × List HeadIndex)) := do
+def collectPatterns? (proof : Expr) (xs : Array Expr) (searchPlaces : Array Expr) : MetaM (Option (List Expr × List HeadIndex)) := do
   let go : CollectorM (Option (List Expr)) := do
     for place in searchPlaces do
       trace[grind.debug.ematch.pattern] "place: {place}"
@@ -801,7 +801,7 @@ Tries to find a ground pattern to activate the theorem.
 This is used for theorems such as `theorem evenZ : Even 0`.
 This function is only used if `collectPatterns?` returns `none`.
 -/
-private partial def collectGroundPattern? (proof : Expr) (xs : Array Expr) (searchPlaces : Array Expr) : MetaM (Option (Expr × List HeadIndex)) := do
+partial def collectGroundPattern? (proof : Expr) (xs : Array Expr) (searchPlaces : Array Expr) : MetaM (Option (Expr × List HeadIndex)) := do
   unless (← checkCoverage proof xs.size {}) matches .ok do
     return none
   let go? : CollectorM (Option Expr) := do
@@ -909,7 +909,7 @@ def mkEMatchEqTheoremsForDef? (declName : Name) : MetaM (Option (Array EMatchThe
   eqns.mapM fun eqn => do
     mkEMatchEqTheorem eqn (normalizePattern := true)
 
-private def addGrindEqAttr (declName : Name) (attrKind : AttributeKind) (thmKind : EMatchTheoremKind) (useLhs := true) : MetaM Unit := do
+def addGrindEqAttr (declName : Name) (attrKind : AttributeKind) (thmKind : EMatchTheoremKind) (useLhs := true) : MetaM Unit := do
   if wasOriginallyTheorem (← getEnv) declName then
     ematchTheoremsExt.add (← mkEMatchEqTheorem declName (normalizePattern := true) (useLhs := useLhs)) attrKind
   else if let some thms ← mkEMatchEqTheoremsForDef? declName then

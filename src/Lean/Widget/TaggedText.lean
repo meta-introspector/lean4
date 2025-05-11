@@ -68,7 +68,7 @@ instance [RpcEncodable α] : RpcEncodable (TaggedText α) where
   rpcEncode a := toJson <$> a.mapM rpcEncode
   rpcDecode a := do TaggedText.mapM rpcDecode (← fromJson? a)
 
-private structure TaggedState where
+structure TaggedState where
   out      : TaggedText (Nat × Nat)              := TaggedText.text ""
   tagStack : List (Nat × Nat × TaggedText (Nat × Nat)) := []
   column   : Nat                                 := 0

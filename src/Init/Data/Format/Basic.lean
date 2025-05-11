@@ -106,7 +106,7 @@ def isNil : Format → Bool
   | nil => true
   | _   => false
 
-private structure SpaceResult where
+structure SpaceResult where
   foundLine              : Bool := false
   foundFlattenedHardLine : Bool := false
   space                  : Nat  := 0
@@ -137,12 +137,12 @@ private def spaceUptoLine : Format → Bool → Int → Nat → SpaceResult
   | group f _,    _,       m, w => spaceUptoLine f true m w
   | tag _ f,      flatten, m, w => spaceUptoLine f flatten m w
 
-private structure WorkItem where
+structure WorkItem where
   f : Format
   indent : Int
   activeTags : Nat
 
-private structure WorkGroup where
+structure WorkGroup where
   flatten : Bool
   flb     : FlattenBehavior
   items   : List WorkItem
@@ -290,7 +290,7 @@ def indentD (f : Format) : Format :=
   nestD (Format.line ++ f)
 
 /-- State for formatting a pretty string. -/
-private structure State where
+structure State where
   out    : String := ""
   column : Nat    := 0
 

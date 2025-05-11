@@ -10,7 +10,7 @@ jobs:
     name: Backport
     runs-on: ubuntu-latest
     # Only react to merged PRs for security reasons.
-    # See https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#pull_request_target.
+    # See https://docs.github.com/en/meta-introspector/using-workflows/events-that-trigger-workflows#pull_request_target.
     if: >
       github.event.pull_request.merged
       && (

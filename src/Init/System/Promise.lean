@@ -14,7 +14,7 @@ namespace IO
 
 private opaque PromisePointed : NonemptyType.{0}
 
-private structure PromiseImpl (α : Type) : Type where
+structure PromiseImpl (α : Type) : Type where
   prom : PromisePointed.type
   h    : Nonempty α
 

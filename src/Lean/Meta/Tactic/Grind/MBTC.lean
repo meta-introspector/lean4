@@ -33,13 +33,13 @@ structure MBTC.Context where
   -/
   eqAssignment : Expr → Expr → GoalM Bool
 
-private structure ArgInfo where
+structure ArgInfo where
   arg : Expr
   app : Expr
 
 private abbrev Map := Std.HashMap (Expr × Nat) (List ArgInfo)
 private abbrev Candidates := Std.HashSet SplitInfo
-private def mkCandidate (a b : ArgInfo) (i : Nat) : GoalM SplitInfo := do
+def mkCandidate (a b : ArgInfo) (i : Nat) : GoalM SplitInfo := do
   let (lhs, rhs) := if a.arg.lt b.arg then
     (a.arg, b.arg)
   else

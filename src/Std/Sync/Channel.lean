@@ -67,7 +67,7 @@ The central state structure for an unbounded channel, maintains the following in
 1. `values = ∅ ∨ consumers = ∅`
 2. `closed = true → consumers = ∅`
 -/
-private structure Unbounded.State (α : Type) where
+structure Unbounded.State (α : Type) where
   /--
   Values pushed into the channel that are waiting to be consumed.
   -/
@@ -83,7 +83,7 @@ private structure Unbounded.State (α : Type) where
   closed : Bool
 deriving Nonempty
 
-private structure Unbounded (α : Type) where
+structure Unbounded (α : Type) where
   state : Mutex (Unbounded.State α)
 deriving Nonempty
 
@@ -205,7 +205,7 @@ The central state structure for a zero buffer channel, maintains the following i
 1. `producers = ∅ ∨ consumers = ∅`
 2. `closed = true → consumers = ∅`
 -/
-private structure Zero.State (α : Type) where
+structure Zero.State (α : Type) where
   /--
   Producers that are blocked on a consumer taking their value.
   -/
@@ -220,7 +220,7 @@ private structure Zero.State (α : Type) where
   -/
   closed : Bool
 
-private structure Zero (α : Type) where
+structure Zero (α : Type) where
   state : Mutex (Zero.State α)
 
 namespace Zero
@@ -351,7 +351,7 @@ private def recvSelector (ch : Zero α) : Selector (Option α) where
 end Zero
 
 open Internal.IO.Async in
-private structure Bounded.Consumer (α : Type) where
+structure Bounded.Consumer (α : Type) where
   promise : IO.Promise Bool
   waiter : Option (Waiter (Option α))
 
@@ -373,7 +373,7 @@ While it (currently) lacks the partial lock-freeness of go channels, the protoco
 [Go channels on steroids](https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub)
 as well as its [implementation](https://go.dev/src/runtime/chan.go).
 -/
-private structure Bounded.State (α : Type) where
+structure Bounded.State (α : Type) where
   /--
   Producers that are blocked on a consumer taking their value as there was no buffer space
   available when they tried to enqueue.
@@ -416,7 +416,7 @@ private structure Bounded.State (α : Type) where
   -/
   closed : Bool
 
-private structure Bounded (α : Type) where
+structure Bounded (α : Type) where
   state : Mutex (Bounded.State α)
 
 namespace Bounded

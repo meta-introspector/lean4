@@ -69,7 +69,7 @@ scoped syntax (name := configDecl)
 instance : Coe Ident (TSyntax ``Term.structInstLVal) where
   coe stx := Unhygienic.run `(Term.structInstLVal| $stx:ident)
 
-private structure FieldView where
+structure FieldView where
   ref : Syntax
   mods : TSyntax ``Command.declModifiers := Unhygienic.run `(declModifiers|)
   id : Ident
@@ -79,7 +79,7 @@ private structure FieldView where
   decl? : Option (TSyntax ``structSimpleBinder) := none
   parent  : Bool := false
 
-private structure FieldMetadata where
+structure FieldMetadata where
   cmds : Array Command := #[]
   fields : Term := Unhygienic.run `(Array.empty)
 

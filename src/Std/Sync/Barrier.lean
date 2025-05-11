@@ -13,7 +13,7 @@ This file heavily inspired by:
 https://github.com/rust-lang/rust/blob/b8ae372/library/std/src/sync/barrier.rs
 -/
 
-private structure BarrierState where
+structure BarrierState where
   count : Nat
   generationId : Nat
 

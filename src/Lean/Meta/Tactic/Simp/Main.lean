@@ -52,13 +52,13 @@ Unfold definition even if it is not marked as `@[reducible]`.
 Remark: We never unfold irreducible definitions. Mathlib relies on that in the implementation of the
 command `irreducible_def`.
 -/
-private def unfoldDefinitionAny? (e : Expr) : MetaM (Option Expr) := do
+def unfoldDefinitionAny? (e : Expr) : MetaM (Option Expr) := do
   if let .const declName _ := e.getAppFn then
     if (← isIrreducible declName) then
       return none
   unfoldDefinition? e (ignoreTransparency := true)
 
-private def reduceProjFn? (e : Expr) : SimpM (Option Expr) := do
+def reduceProjFn? (e : Expr) : SimpM (Option Expr) := do
   matchConst e.getAppFn (fun _ => pure none) fun cinfo _ => do
     match (← getProjectionFnInfo? cinfo.name) with
     | none => return none
@@ -99,7 +99,7 @@ private def reduceProjFn? (e : Expr) : SimpM (Option Expr) := do
         -- `structure` projections
         reduceProjCont? (← unfoldDefinition? e)
 
-private def reduceFVar (cfg : Config) (thms : SimpTheoremsArray) (e : Expr) : SimpM Expr := do
+def reduceFVar (cfg : Config) (thms : SimpTheoremsArray) (e : Expr) : SimpM Expr := do
   let localDecl ← getFVarLocalDecl e
   if cfg.zetaDelta || thms.isLetDeclToUnfold e.fvarId! || localDecl.isImplementationDetail then
     if !cfg.zetaDelta && thms.isLetDeclToUnfold e.fvarId! then
@@ -117,7 +117,7 @@ private def reduceFVar (cfg : Config) (thms : SimpTheoremsArray) (e : Expr) : Si
     | ...
   ```
 -/
-private partial def isMatchDef (declName : Name) : CoreM Bool := do
+partial def isMatchDef (declName : Name) : CoreM Bool := do
   let .defnInfo info ← getConstInfo declName | return false
   return go (← getEnv) info.value
 where
@@ -131,7 +131,7 @@ where
 /--
 Try to unfold `e`.
 -/
-private def unfold? (e : Expr) : SimpM (Option Expr) := do
+def unfold? (e : Expr) : SimpM (Option Expr) := do
   let f := e.getAppFn
   if !f.isConst then
     return none
@@ -172,7 +172,7 @@ private def unfold? (e : Expr) : SimpM (Option Expr) := do
   else
     return none
 
-private def reduceStep (e : Expr) : SimpM Expr := do
+def reduceStep (e : Expr) : SimpM Expr := do
   let cfg ← getConfig
   let f := e.getAppFn
   if f.isMVar then
@@ -205,7 +205,7 @@ private def reduceStep (e : Expr) : SimpM Expr := do
     return e'
   | none => foldRawNatLit e
 
-private partial def reduce (e : Expr) : SimpM Expr := withIncRecDepth do
+partial def reduce (e : Expr) : SimpM Expr := withIncRecDepth do
   let e' ← reduceStep e
   if e' == e then
     return e'
@@ -417,14 +417,14 @@ def simpLet (e : Expr) : SimpM Result := do
           let h ← mkLambdaFVars #[x] h
           return { expr := e', proof? := some (← mkLetBodyCongr v' h) }
 
-private def dsimpReduce : DSimproc := fun e => do
+def dsimpReduce : DSimproc := fun e => do
   let mut eNew ← reduce e
   if eNew.isFVar then
     eNew ← reduceFVar (← getConfig) (← getSimpTheorems) eNew
   if eNew != e then return .visit eNew else return .done e
 
 /-- Helper `dsimproc` for `doNotVisitOfNat` and `doNotVisitOfScientific` -/
-private def doNotVisit (pred : Expr → Bool) (declName : Name) : DSimproc := fun e => do
+def doNotVisit (pred : Expr → Bool) (declName : Name) : DSimproc := fun e => do
   if pred e then
     if (← readThe Simp.Context).isDeclToUnfold declName then
       return .continue e
@@ -441,20 +441,20 @@ Auxiliary `dsimproc` for not visiting `OfNat.ofNat` application subterms.
 This is the `dsimp` equivalent of the approach used at `visitApp`.
 Recall that we fold orphan raw Nat literals.
 -/
-private def doNotVisitOfNat : DSimproc := doNotVisit isOfNatNatLit ``OfNat.ofNat
+def doNotVisitOfNat : DSimproc := doNotVisit isOfNatNatLit ``OfNat.ofNat
 
 /--
 Auxiliary `dsimproc` for not visiting `OfScientific.ofScientific` application subterms.
 -/
-private def doNotVisitOfScientific : DSimproc := doNotVisit isOfScientificLit ``OfScientific.ofScientific
+def doNotVisitOfScientific : DSimproc := doNotVisit isOfScientificLit ``OfScientific.ofScientific
 
 /--
 Auxiliary `dsimproc` for not visiting `Char` literal subterms.
 -/
-private def doNotVisitCharLit : DSimproc := doNotVisit isCharLit ``Char.ofNat
+def doNotVisitCharLit : DSimproc := doNotVisit isCharLit ``Char.ofNat
 
 @[export lean_dsimp]
-private partial def dsimpImpl (e : Expr) : SimpM Expr := do
+partial def dsimpImpl (e : Expr) : SimpM Expr := do
   let cfg ← getConfig
   unless cfg.dsimp do
     return e
@@ -601,7 +601,7 @@ def isNonDepLetFun (e : Expr) : Bool :=
 /--
 Auxiliary structure used to represent the return value of `simpNonDepLetFun.go`.
 -/
-private structure SimpLetFunResult where
+structure SimpLetFunResult where
   /--
   The simplified expression. Note that is may contain loose bound variables.
   `simpNonDepLetFun.go` attempts to minimize the quadratic overhead imposed
@@ -780,16 +780,16 @@ where
     trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
     simpLoop e
 
-@[inline] private def withSimpContext (ctx : Context) (x : MetaM α) : MetaM α := do
+@[inline] def withSimpContext (ctx : Context) (x : MetaM α) : MetaM α := do
   withConfig (fun c => { c with etaStruct := ctx.config.etaStruct }) <|
   withTrackingZetaDeltaSet ctx.zetaDeltaSet <|
   withReducible x
 
-private def updateUsedSimpsWithZetaDeltaCore (s : UsedSimps) (usedZetaDelta : FVarIdSet) : UsedSimps :=
+def updateUsedSimpsWithZetaDeltaCore (s : UsedSimps) (usedZetaDelta : FVarIdSet) : UsedSimps :=
   usedZetaDelta.fold (init := s) fun s fvarId =>
     s.insert <| .fvar fvarId
 
-private def updateUsedSimpsWithZetaDelta (ctx : Context) (stats : Stats) : MetaM Stats := do
+def updateUsedSimpsWithZetaDelta (ctx : Context) (stats : Stats) : MetaM Stats := do
   let used := stats.usedTheorems
   let used := updateUsedSimpsWithZetaDeltaCore used ctx.initUsedZetaDelta
   let used := updateUsedSimpsWithZetaDeltaCore used (← getZetaDeltaFVarIds)

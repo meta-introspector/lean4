@@ -12,7 +12,7 @@ namespace Sat
 
 namespace CNF
 
-private structure DimacsState where
+structure DimacsState where
   numClauses : Nat := 0
   maxLit : Nat := 0
 
