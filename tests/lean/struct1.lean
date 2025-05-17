@@ -41,16 +41,16 @@ structure S extends A Nat where
 structure S'' where
 (x : Nat := true) -- error type mismatch
 
-private structure S where
+structure S where
 private mk :: (x : Nat)
 
-private structure S where
+structure S where
 protected mk :: (x : Nat)
 
-private structure S where
+structure S where
 protected (x : Nat)
 
-private structure S where
+structure S where
 mk2 :: (x : Nat)
 
 #check S

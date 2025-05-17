@@ -13,7 +13,7 @@
 name: PR release
 
 on:
-  workflow_run: # https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#workflow_run
+  workflow_run: # https://docs.github.com/en/meta-introspector/using-workflows/events-that-trigger-workflows#workflow_run
     workflows: [CI]
     types: [completed]
 
@@ -23,7 +23,7 @@ jobs:
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && github.repository == 'leanprover/lean4'
     steps:
       - name: Retrieve information about the original workflow
-        uses: potiuk/get-workflow-origin@v1_1 # https://github.com/marketplace/actions/get-workflow-origin
+        uses: potiuk/get-workflow-origin@v1_1 # https://github.com/marketplace/meta-introspector/get-workflow-origin
         # This action is deprecated and archived, but it seems hard to find a better solution for getting the PR number
         # see https://github.com/orgs/community/discussions/25220 for some discussion
         id: workflow-info
@@ -34,7 +34,7 @@ jobs:
       - name: Download artifact from the previous workflow.
         if: ${{ steps.workflow-info.outputs.pullRequestNumber != '' }}
         id: download-artifact
-        uses: dawidd6/action-download-artifact@v9 # https://github.com/marketplace/actions/download-workflow-artifact
+        uses: dawidd6/action-download-artifact@v9 # https://github.com/marketplace/meta-introspector/download-workflow-artifact
         with:
           run_id: ${{ github.event.workflow_run.id }}
           path: artifacts
@@ -75,7 +75,7 @@ jobs:
 
       - name: Report release status
         if: ${{ steps.workflow-info.outputs.pullRequestNumber != '' }}
-        uses: actions/github-script@v7
+        uses: meta-introspector/github-script@v7
         with:
           script: |
             await github.rest.repos.createCommitStatus({
@@ -89,7 +89,7 @@ jobs:
 
       - name: Add label
         if: ${{ steps.workflow-info.outputs.pullRequestNumber != '' }}
-        uses: actions/github-script@v7
+        uses: meta-introspector/github-script@v7
         with:
           script: |
             await github.rest.issues.addLabels({
@@ -227,7 +227,7 @@ jobs:
 
       - name: Report mathlib base
         if: ${{ steps.workflow-info.outputs.pullRequestNumber != '' && steps.ready.outputs.mathlib_ready == 'true' }}
-        uses: actions/github-script@v7
+        uses: meta-introspector/github-script@v7
         with:
           script: |
             const description =
@@ -254,7 +254,7 @@ jobs:
       # Checkout the Batteries repository with all branches
       - name: Checkout Batteries repository
         if: steps.workflow-info.outputs.pullRequestNumber != '' && steps.ready.outputs.mathlib_ready == 'true'
-        uses: actions/checkout@v4
+        uses: meta-introspector/checkout@v4
         with:
           repository: leanprover-community/batteries
           token: ${{ secrets.MATHLIB4_BOT }}
@@ -311,7 +311,7 @@ jobs:
       # Checkout the mathlib4 repository with all branches
       - name: Checkout mathlib4 repository
         if: steps.workflow-info.outputs.pullRequestNumber != '' && steps.ready.outputs.mathlib_ready == 'true'
-        uses: actions/checkout@v4
+        uses: meta-introspector/checkout@v4
         with:
           repository: leanprover-community/mathlib4
           token: ${{ secrets.MATHLIB4_BOT }}

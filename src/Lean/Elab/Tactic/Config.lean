@@ -12,7 +12,7 @@ import Lean.Linter.MissingDocs
 namespace Lean.Elab.Tactic
 open Meta Parser.Tactic Command
 
-private structure ConfigItemView where
+structure ConfigItemView where
   ref : Syntax
   option : Ident
   value : Term
@@ -20,7 +20,7 @@ private structure ConfigItemView where
   (bool : Bool := false)
 
 /-- Interprets the `config` as an array of option/value pairs. -/
-private def mkConfigItemViews (c : TSyntaxArray ``configItem) : Array ConfigItemView :=
+def mkConfigItemViews (c : TSyntaxArray ``configItem) : Array ConfigItemView :=
   c.map fun item =>
     match item with
     | `(configItem| ($option:ident := $value)) => { ref := item, option, value }
@@ -33,7 +33,7 @@ private def mkConfigItemViews (c : TSyntaxArray ``configItem) : Array ConfigItem
 Expands a field access into full field access like `toB.toA.x`.
 Returns that and the last projection function for `x` itself.
 -/
-private def expandFieldName (structName : Name) (fieldName : Name) : MetaM (Name × Name) := do
+def expandFieldName (structName : Name) (fieldName : Name) : MetaM (Name × Name) := do
   let env ← getEnv
   unless isStructure env structName do throwError "'{.ofConstName structName}' is not a structure"
   let some baseStructName := findField? env structName fieldName
@@ -48,7 +48,7 @@ private def expandFieldName (structName : Name) (fieldName : Name) : MetaM (Name
 /--
 Given a hierarchical name `field`, returns the fully resolved field access, the base struct name, and the last projection function.
 -/
-private partial def expandField (structName : Name) (field : Name) : MetaM (Name × Name) := do
+partial def expandField (structName : Name) (field : Name) : MetaM (Name × Name) := do
   match field with
   | .num .. | .anonymous => throwError m!"invalid configuration field"
   | .str .anonymous fieldName => expandFieldName structName (Name.mkSimple fieldName)
@@ -61,7 +61,7 @@ private partial def expandField (structName : Name) (field : Name) : MetaM (Name
     return (field' ++ field'', projFn)
 
 /-- Elaborates a tactic configuration. -/
-private def elabConfig (recover : Bool) (structName : Name) (items : Array ConfigItemView) : TermElabM Expr :=
+def elabConfig (recover : Bool) (structName : Name) (items : Array ConfigItemView) : TermElabM Expr :=
   withoutModifyingStateWithInfoAndMessages <| withLCtx {} {} <| withSaveInfoContext do
     let mkStructInst (source? : Option Term) (fields : TSyntaxArray ``Parser.Term.structInstField) : TermElabM Term :=
       match source? with
@@ -121,7 +121,7 @@ section
 -- parser.
 set_option internal.parseQuotWithCurrentStage false
 
-private def mkConfigElaborator
+def mkConfigElaborator
     (doc? : Option (TSyntax ``Parser.Command.docComment)) (elabName type monadName : Ident)
     (adapt recover : Term) : MacroM (TSyntax `command) := do
   let empty ← withRef type `({ : $type})

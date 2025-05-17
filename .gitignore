@@ -32,3 +32,7 @@ fwOut.txt
 wdErr.txt
 wdIn.txt
 wdOut.txt
+/build2/
+changes.zip
+.changes/**
+

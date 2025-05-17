@@ -7,6 +7,7 @@ prelude
 import Init.Data.Hashable
 import Init.Data.Int
 import Lean.Data.KVMap
+import Lean.Data.Json
 import Lean.Data.SMap
 import Lean.Level
 import Std.Data.HashSet.Basic
@@ -19,7 +20,7 @@ inductive Literal where
   | natVal (val : Nat)
   /-- String literal -/
   | strVal (val : String)
-  deriving Inhabited, BEq, Repr
+  deriving Inhabited, ToJson, BEq, Repr
 
 protected def Literal.hash : Literal → UInt64
   | .natVal v => hash v
@@ -76,7 +77,7 @@ inductive BinderInfo where
   | strictImplicit
   /-- Local instance binder annotataion, e.g., `[Decidable α]` -/
   | instImplicit
-  deriving Inhabited, BEq, Repr
+  deriving Inhabited, ToJson, BEq, Repr
 
 def BinderInfo.hash : BinderInfo → UInt64
   | .default        => 947
@@ -226,7 +227,7 @@ a `NameGenerator`.
 -/
 structure FVarId where
   name : Name
-  deriving Inhabited, BEq, Hashable
+  deriving Inhabited, ToJson, BEq, Hashable
 
 instance : Repr FVarId where
   reprPrec n p := reprPrec n.name p
@@ -238,6 +239,7 @@ def FVarIdSet := RBTree FVarId (Name.quickCmp ·.name ·.name)
   deriving Inhabited, EmptyCollection
 
 instance : ForIn m FVarIdSet FVarId := inferInstanceAs (ForIn _ (RBTree ..) ..)
+
 
 def FVarIdSet.insert (s : FVarIdSet) (fvarId : FVarId) : FVarIdSet :=
   RBTree.insert s fvarId
@@ -262,10 +264,14 @@ instance : EmptyCollection (FVarIdMap α) := inferInstanceAs (EmptyCollection (R
 instance : Inhabited (FVarIdMap α) where
   default := {}
 
+instance : ToJson (FVarIdMap α) where
+  toJson _ := ""
+
+
 /-- Universe metavariable Id   -/
 structure MVarId where
   name : Name
-  deriving Inhabited, BEq, Hashable, Repr
+  deriving Inhabited, ToJson, BEq, Hashable, Repr
 
 instance : Repr MVarId where
   reprPrec n p := reprPrec n.name p

@@ -54,7 +54,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: meta-introspector/checkout@v4
         # don't schedule nightlies on forks
         if: github.event_name == 'schedule' && github.repository == 'leanprover/lean4' || inputs.action == 'release nightly'
       - name: Set Nightly
@@ -130,7 +130,7 @@ jobs:
 
       - name: Configure build matrix
         id: set-matrix
-        uses: actions/github-script@v7
+        uses: meta-introspector/github-script@v7
         with:
           script: |
             const level = ${{ steps.set-level.outputs.check-level }};
@@ -212,7 +212,7 @@ jobs:
                 "llvm-url": "https://github.com/leanprover/lean-llvm/releases/download/19.1.2/lean-llvm-x86_64-apple-darwin.tar.zst",
                 "prepare-llvm": "../script/prepare-llvm-macos.sh lean-llvm*",
                 "binary-check": "otool -L",
-                "tar": "gtar" // https://github.com/actions/runner-images/issues/2619
+                "tar": "gtar" // https://github.com/meta-introspector/runner-images/issues/2619
               },
               {
                 "name": "macOS aarch64",
@@ -223,7 +223,7 @@ jobs:
                 "llvm-url": "https://github.com/leanprover/lean-llvm/releases/download/19.1.2/lean-llvm-aarch64-apple-darwin.tar.zst",
                 "prepare-llvm": "../script/prepare-llvm-macos.sh lean-llvm*",
                 "binary-check": "otool -L",
-                "tar": "gtar", // https://github.com/actions/runner-images/issues/2619
+                "tar": "gtar", // https://github.com/meta-introspector/runner-images/issues/2619
                 // Special handling for MacOS aarch64, we want:
                 // 1. To run it in PRs so Mac devs get PR toolchains (so secondary is sufficient)
                 // 2. To skip it in merge queues as it takes longer than the Linux build and adds
@@ -338,9 +338,9 @@ jobs:
         topic: "Github actions"
         type: "stream"
         content: |
-          A build of `${{ github.ref_name }}`, triggered by event `${{ github.event_name }}`, [failed](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+          A build of `${{ github.ref_name }}`, triggered by event `${{ github.event_name }}`, [failed](https://github.com/${{ github.repository }}/meta-introspector/runs/${{ github.run_id }}).
     - if: contains(needs.*.result, 'failure')
-      uses: actions/github-script@v7
+      uses: meta-introspector/github-script@v7
       with:
         script: |
             core.setFailed('Some jobs failed')
@@ -353,7 +353,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: meta-introspector/download-artifact@v4
         with:
           path: artifacts
       - name: Release
@@ -378,12 +378,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: meta-introspector/checkout@v4
         with:
           # needed for tagging
           fetch-depth: 0
           token: ${{ secrets.PUSH_NIGHTLY_TOKEN }}
-      - uses: actions/download-artifact@v4
+      - uses: meta-introspector/download-artifact@v4
         with:
           path: artifacts
       - name: Prepare Nightly Release

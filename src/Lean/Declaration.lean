@@ -5,6 +5,7 @@ Authors: Leonardo de Moura
 -/
 prelude
 import Lean.Expr
+import Lean.Data.Json
 
 namespace Lean
 /--
@@ -84,7 +85,7 @@ structure ConstantVal where
   name : Name
   levelParams : List Name
   type : Expr
-  deriving Inhabited, BEq
+  deriving Inhabited,  BEq
 
 structure AxiomVal extends ConstantVal where
   isUnsafe : Bool
@@ -103,7 +104,7 @@ def mkAxiomValEx (name : Name) (levelParams : List Name) (type : Expr) (isUnsafe
 
 inductive DefinitionSafety where
   | «unsafe» | safe | «partial»
-  deriving Inhabited, BEq, Repr
+  deriving Inhabited, ToJson, BEq, Repr
 
 structure DefinitionVal extends ConstantVal where
   value  : Expr
@@ -529,3 +530,5 @@ def mkRecName (declName : Name) : Name :=
   Name.mkStr declName "rec"
 
 end Lean
+
+

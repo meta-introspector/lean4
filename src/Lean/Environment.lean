@@ -1,7 +1,9 @@
 /-
 Copyright (c) 2019 Microsoft Corporation. All rights reserved.
+Copyright (c) 2025 James Michael Dupont All rights reserved.
+Copyright (c) 2025 Introspector LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
-Authors: Leonardo de Moura
+Authors: Leonardo de Moura, with hacks from James Michael Dupont
 -/
 prelude
 import Init.Control.StateRef
@@ -11,6 +13,7 @@ import Init.System.Promise
 import Lean.ImportingFlag
 import Lean.Data.NameTrie
 import Lean.Data.SMap
+import Lean.Setup
 import Lean.Declaration
 import Lean.LocalContext
 import Lean.Util.Path
@@ -92,18 +95,6 @@ instance : GetElem? (Array α) ModuleIdx α (fun a i => i.toNat < a.size) where
   getElem! a i := a[i.toNat]!
 
 abbrev ConstMap := SMap Name ConstantInfo
-
-structure Import where
-  module        : Name
-  /-- `import all`; whether to import and expose all data saved by the module. -/
-  importAll : Bool := false
-  /-- Whether to activate this import when the current module itself is imported. -/
-  isExported    : Bool := true
-  deriving Repr, Inhabited
-
-instance : Coe Name Import := ⟨({module := ·})⟩
-
-instance : ToString Import := ⟨fun imp => toString imp.module⟩
 
 /--
   A compacted region holds multiple Lean objects in a contiguous memory region, which can be read/written to/from disk.
@@ -196,11 +187,7 @@ declared by users are stored in an environment extension. Users can declare new 
 using meta-programming.
 -/
 structure Environment where
-  /--
-  The constructor of `Environment` is private to protect against modification that bypasses the
-  kernel.
-  -/
-  private mk ::
+
   /--
   Mapping from constant name to `ConstantInfo`. It contains all constants (definitions, theorems,
   axioms, etc) that have been already type checked by the kernel.
@@ -236,13 +223,13 @@ structure Environment where
   /--
   Environment extensions. It also includes user-defined extensions.
   -/
-  private extensions      : Array EnvExtensionState
+  extensions      : Array EnvExtensionState
   /--
   Constant names to be saved in the field `extraConstNames` at `ModuleData`.
   It contains auxiliary declaration names created by the code generator which are not in `constants`.
   When importing modules, we want to insert them at `const2ModIdx`.
   -/
-  private extraConstNames : NameSet
+  extraConstNames : NameSet
   /-- The header contains additional information that is set at import time. -/
   header                  : EnvironmentHeader := {}
 deriving Nonempty
@@ -276,11 +263,11 @@ def find? (env : Environment) (n : Name) : Option ConstantInfo :=
   env.constants.find?' n
 
 @[export lean_environment_mark_quot_init]
-private def markQuotInit (env : Environment) : Environment :=
+def markQuotInit (env : Environment) : Environment :=
   { env with quotInit := true }
 
 @[export lean_environment_quot_init]
-private def isQuotInit (env : Environment) : Bool :=
+def isQuotInit (env : Environment) : Bool :=
   env.quotInit
 
 /-- Type check given declaration and add it to the environment -/
@@ -299,7 +286,7 @@ and the kernel will not catch it if the new option is set to true.
 opaque addDeclWithoutChecking (env : Environment) (decl : @& Declaration) : Except Exception Environment
 
 @[export lean_environment_add]
-private def add (env : Environment) (cinfo : ConstantInfo) : Environment :=
+def add (env : Environment) (cinfo : ConstantInfo) : Environment :=
   { env with constants := env.constants.insert cinfo.name cinfo }
 
 @[export lean_kernel_diag_is_enabled]
@@ -389,7 +376,7 @@ Information about the current branch of the environment representing asynchronou
 
 Use `Environment.enterAsync` instead of `mkRaw`.
 -/
-private structure AsyncContext where mkRaw ::
+structure AsyncContext where mkRaw ::
   /--
   Name of the declaration asynchronous elaboration was started for. All constants added to this
   environment branch must have the name as a prefix, after erasing macro scopes and private name
@@ -407,13 +394,13 @@ deriving Nonempty
 Checks whether a declaration named `n` may be added to the environment in the given context. See
 also `AsyncContext.declPrefix`.
 -/
-private def AsyncContext.mayContain (ctx : AsyncContext) (n : Name) : Bool :=
+def AsyncContext.mayContain (ctx : AsyncContext) (n : Name) : Bool :=
   ctx.declPrefix.isPrefixOf <| privateToUserName n.eraseMacroScopes
 
 /--
 Constant info and environment extension states eventually resulting from async elaboration.
 -/
-private structure AsyncConst where
+structure AsyncConst where
   constInfo : AsyncConstantInfo
   /--
   Reported extension state eventually fulfilled by promise; may be missing for tasks (e.g. kernel
@@ -427,16 +414,17 @@ private structure AsyncConst where
   consts    : Task Dynamic
 
 /-- Data structure holding a sequence of `AsyncConst`s optimized for efficient access. -/
-private structure AsyncConsts where
+structure AsyncConsts where
   size : Nat
   revList : List AsyncConst
   /-- Map from declaration name to const for fast direct access. -/
   map : NameMap AsyncConst
-  /-- Trie of declaration names without private name prefixes for fast longest-prefix access. -/
+  /-- Trie of declaration names without private
+  name prefixes for fast longest-prefix access. -/
   normalizedTrie : NameTrie AsyncConst
 deriving Inhabited, TypeName
 
-private def AsyncConsts.add (aconsts : AsyncConsts) (aconst : AsyncConst) : AsyncConsts :=
+def AsyncConsts.add (aconsts : AsyncConsts) (aconst : AsyncConst) : AsyncConsts :=
   let normalizedName := privateToUserName aconst.constInfo.name
   if let some aconst' := aconsts.normalizedTrie.find? normalizedName then
     let _ : Inhabited AsyncConsts := ⟨aconsts⟩
@@ -448,11 +436,11 @@ private def AsyncConsts.add (aconsts : AsyncConsts) (aconst : AsyncConst) : Asyn
     normalizedTrie := aconsts.normalizedTrie.insert normalizedName aconst
   }
 
-private def AsyncConsts.find? (aconsts : AsyncConsts) (declName : Name) : Option AsyncConst :=
+def AsyncConsts.find? (aconsts : AsyncConsts) (declName : Name) : Option AsyncConst :=
   aconsts.map.find? declName
 
 /-- Finds the constant in the collection that is a prefix of `declName`, if any. -/
-private def AsyncConsts.findPrefix? (aconsts : AsyncConsts) (declName : Name) : Option AsyncConst :=
+def AsyncConsts.findPrefix? (aconsts : AsyncConsts) (declName : Name) : Option AsyncConst :=
   -- as macro scopes are a strict suffix, we do not have to remove them before calling
   -- `findLongestPrefix?`
   aconsts.normalizedTrie.findLongestPrefix? (privateToUserName declName)
@@ -461,7 +449,7 @@ private def AsyncConsts.findPrefix? (aconsts : AsyncConsts) (declName : Name) : 
 Finds constants including from other environment branches by recursively looking up longest
 prefixes (which is sufficient by `AsyncContext.mayContain`).
 -/
-private partial def AsyncConsts.findRec? (aconsts : AsyncConsts) (declName : Name) : Option AsyncConst := do
+partial def AsyncConsts.findRec? (aconsts : AsyncConsts) (declName : Name) : Option AsyncConst := do
   let c ← aconsts.findPrefix? declName
   if c.constInfo.name == declName then
     return c
@@ -469,7 +457,7 @@ private partial def AsyncConsts.findRec? (aconsts : AsyncConsts) (declName : Nam
   AsyncConsts.findRec? aconsts declName
 
 /-- Like `findRec?`; allocating tasks is (currently?) too costly to do always. -/
-private partial def AsyncConsts.findRecTask (aconsts : AsyncConsts) (declName : Name) : Task (Option AsyncConst) := Id.run do
+partial def AsyncConsts.findRecTask (aconsts : AsyncConsts) (declName : Name) : Task (Option AsyncConst) := Id.run do
   let some c := aconsts.findPrefix? declName | .pure none
   if c.constInfo.name == declName then
     return .pure c
@@ -478,27 +466,27 @@ private partial def AsyncConsts.findRecTask (aconsts : AsyncConsts) (declName : 
     AsyncConsts.findRecTask aconsts declName
 
 /-- Accessibility levels of declarations in `Lean.Environment`. -/
-private inductive Visibility where
+inductive Visibility where
   /-- Information private to the module. -/
   | «private»
   /-- Information to be exported to other modules. -/
   | «public»
 
 /-- Maps `Visibility` to `α`. -/
-private structure VisibilityMap (α : Type) where
+structure VisibilityMap (α : Type) where
   «private» : α
   «public»  : α
 deriving Inhabited, Nonempty
 
 /-- Realization results, to be replayed onto other branches. -/
-private structure RealizationResult where
+structure RealizationResult where
   newConsts : VisibilityMap (List AsyncConst)
   replayKernel : Kernel.Environment → Except Kernel.Exception Kernel.Environment
   dyn : Dynamic
 deriving Nonempty
 
 /-- Context for `realizeConst` established by `enableRealizationsForConst`. -/
-private structure RealizationContext where
+structure RealizationContext where
   /--
   Saved `Environment`, untyped to avoid cyclic reference. Import environment for imported constants.
   -/
@@ -523,7 +511,7 @@ structure Environment where
   environment, though there are no soundness concerns in this case given that it is used purely for
   elaboration.
   -/
-  private mk ::
+  mk ::
   /--
   Kernel environments containing imported constants. Also stores environment extension state for the
   current branch of the environment (in `private`). Any other data should be considered
@@ -532,13 +520,13 @@ structure Environment where
   As `base` is eagerly available, we prefer taking information from it instead of `checked` whenever
   possible.
   -/
-  private base : VisibilityMap Kernel.Environment
+ base : VisibilityMap Kernel.Environment
   /--
   Additional imported environment extension state for use in the language server. This field is
   identical to `base.extensions` in other contexts. Access via
   `getModuleEntries (includeServer := true)`.
   -/
-  private serverBaseExts : Array EnvExtensionState := base.private.extensions
+ serverBaseExts : Array EnvExtensionState := base.private.extensions
   /--
   Kernel environment task that is fulfilled when all asynchronously elaborated declarations are
   finished, containing the resulting environment. Also collects the environment extension state of
@@ -553,26 +541,26 @@ structure Environment where
   Private view should correspond to kernel map. Public view may contain fewer constants and less
   data per constant.
   -/
-  private asyncConstsMap : VisibilityMap AsyncConsts := default
+  asyncConstsMap : VisibilityMap AsyncConsts := default
   /-- Information about this asynchronous branch of the environment, if any. -/
-  private asyncCtx?   : Option AsyncContext := none
+  asyncCtx?   : Option AsyncContext := none
   /--
   Realized constants belonging to imported declarations. Must be initialized by calling
   `enableRealizationsForImports`.
   -/
-  private realizedImportedConsts? : Option RealizationContext
+  realizedImportedConsts? : Option RealizationContext
   /--
   Realized constants belonging to local declarations. This is a map from local declarations, which
   need to be registered synchronously using `enableRealizationsForConst`, to their realization
   context incl. a ref of realized constants.
   -/
-  private realizedLocalConsts  : NameMap RealizationContext := {}
+  realizedLocalConsts  : NameMap RealizationContext := {}
   /--
   Task collecting all realizations from the current and already-forked environment branches, akin to
   how `checked` collects all declarations. We only use it as a fallback in
   `findAsyncCore?`/`findStateAsync`; see there.
   -/
-  private allRealizations : Task (NameMap AsyncConst) := .pure {}
+  allRealizations : Task (NameMap AsyncConst) := .pure {}
   /--
   Indicates whether the environment is being used in an exported context, i.e. whether it should
   provide access to only the data to be imported by other modules participating in the module
@@ -581,19 +569,19 @@ structure Environment where
   isExporting : Bool := false
 deriving Nonempty
 
-@[inline] private def VisibilityMap.get (m : VisibilityMap α) (env : Environment) : α :=
+@[inline] def VisibilityMap.get (m : VisibilityMap α) (env : Environment) : α :=
   if env.isExporting then m.public else m.private
 
-private def VisibilityMap.map (m : VisibilityMap α) (f : α → β) : VisibilityMap β where
+def VisibilityMap.map (m : VisibilityMap α) (f : α → β) : VisibilityMap β where
   «private» := f m.private
   «public»  := f m.public
 
-private def VisibilityMap.const (a : α) : VisibilityMap α :=
+def VisibilityMap.const (a : α) : VisibilityMap α :=
   { «private» := a, «public» := a }
 
 namespace Environment
 
-private def asyncConsts (env : Environment) : AsyncConsts :=
+def asyncConsts (env : Environment) : AsyncConsts :=
   env.asyncConstsMap.get env
 
 -- Used only when the kernel calls into the interpreter, and in `Lean.Kernel.Exception.mkCtx`. In
@@ -611,11 +599,11 @@ def setExporting (env : Environment) (isExporting : Bool) : Environment :=
   { env with isExporting }
 
 /-- Consistently updates synchronous and (private) asynchronous parts of the environment without blocking. -/
-private def modifyCheckedAsync (env : Environment) (f : Kernel.Environment → Kernel.Environment) : Environment :=
+def modifyCheckedAsync (env : Environment) (f : Kernel.Environment → Kernel.Environment) : Environment :=
   { env with checked := env.checked.map (sync := true) f, base.private := f env.base.private }
 
 /-- Sets synchronous and (private) asynchronous parts of the environment to the given kernel environment. -/
-private def setCheckedSync (env : Environment) (newChecked : Kernel.Environment) : Environment :=
+def setCheckedSync (env : Environment) (newChecked : Kernel.Environment) : Environment :=
   { env with checked := .pure newChecked, base.private := newChecked }
 
 /-- The declaration prefix to which the environment is restricted to, if any. -/
@@ -651,11 +639,11 @@ def asyncMayContain (env : Environment) (declName : Name) : Bool :=
   env.asyncCtx?.all (·.mayContain declName)
 
 @[extern "lean_elab_add_decl"]
-private opaque addDeclCheck (env : Environment) (maxHeartbeats : USize) (decl : @& Declaration)
+opaque addDeclCheck (env : Environment) (maxHeartbeats : USize) (decl : @& Declaration)
   (cancelTk? : @& Option IO.CancelToken) : Except Kernel.Exception Environment
 
 @[extern "lean_elab_add_decl_without_checking"]
-private opaque addDeclWithoutChecking (env : Environment) (decl : @& Declaration) :
+opaque addDeclWithoutChecking (env : Environment) (decl : @& Declaration) :
   Except Kernel.Exception Environment
 
 /--
@@ -686,7 +674,7 @@ def const2ModIdx (env : Environment) : Std.HashMap Name ModuleIdx :=
 
 -- only needed for the lakefile.lean cache
 @[export lake_environment_add]
-private def lakeAdd (env : Environment) (cinfo : ConstantInfo) : Environment :=
+def lakeAdd (env : Environment) (cinfo : ConstantInfo) : Environment :=
   let env := env.setCheckedSync <| env.checked.get.add cinfo
   {
     env with
@@ -710,10 +698,10 @@ def addExtraName (env : Environment) (name : Name) : Environment :=
 
 -- forward reference due to too many cyclic dependencies
 @[extern "lean_is_reserved_name"]
-private opaque isReservedName (env : Environment) (name : Name) : Bool
+opaque isReservedName (env : Environment) (name : Name) : Bool
 
 /-- `findAsync?` after `base` access -/
-private def findAsyncCore? (env : Environment) (n : Name) (skipRealize := false) :
+def findAsyncCore? (env : Environment) (n : Name) (skipRealize := false) :
     Option AsyncConstantInfo := do
   if let some c := env.asyncConsts.find? n then
     -- Constant for which an asynchronous elaboration task was spawned
@@ -730,7 +718,7 @@ private def findAsyncCore? (env : Environment) (n : Name) (skipRealize := false)
   none
 
 /-- Like `findAsyncCore?`; allocating tasks is (currently?) too costly to do always. -/
-private def findTaskCore (env : Environment) (n : Name) (skipRealize := false) :
+def findTaskCore (env : Environment) (n : Name) (skipRealize := false) :
     Task (Option AsyncConstantInfo) := Id.run do
   if let some c := env.asyncConsts.find? n then
     -- Constant for which an asynchronous elaboration task was spawned
@@ -853,19 +841,19 @@ structure PromiseCheckedResult where
   unchanged.
   -/
   asyncEnv : Environment
-  private checkedEnvPromise : IO.Promise Kernel.Environment
+  checkedEnvPromise : IO.Promise Kernel.Environment
 
 def realizingStack (env : Environment) : List Name :=
   env.asyncCtx?.map (·.realizingStack) |>.getD []
 
 /-- Creates an async context for the given declaration name, normalizing it for use as a prefix. -/
-private def enterAsync (declName : Name) (env : Environment) : Environment :=
+def enterAsync (declName : Name) (env : Environment) : Environment :=
   { env with asyncCtx? := some {
     declPrefix := privateToUserName declName.eraseMacroScopes
     realizingStack := env.realizingStack } }
 
 /-- Creates an async context when realizing `declName` -/
-private def enterAsyncRealizing (declName : Name) (env : Environment) : Environment :=
+def enterAsyncRealizing (declName : Name) (env : Environment) : Environment :=
   { env with asyncCtx? := some {
     declPrefix := .anonymous
     realizingStack := declName :: env.realizingStack } }
@@ -894,7 +882,7 @@ def PromiseCheckedResult.commitChecked (res : PromiseCheckedResult) (env : Envir
   res.checkedEnvPromise.resolve env.toKernelEnv
 
 /-- Data transmitted by `AddConstAsyncResult.commitConst`. -/
-private structure ConstPromiseVal where
+structure ConstPromiseVal where
   privateConstInfo     : ConstantInfo
   exportedConstInfo    : ConstantInfo
   exts                 : Array EnvExtensionState
@@ -919,15 +907,15 @@ structure AddConstAsyncResult where
   left unchanged.
   -/
   asyncEnv : Environment
-  private constName : Name
-  private kind : ConstantKind
-  private sigPromise : IO.Promise ConstantVal
-  private constPromise : IO.Promise ConstPromiseVal
-  private checkedEnvPromise : IO.Promise Kernel.Environment
-  private allRealizationsPromise : IO.Promise (NameMap AsyncConst)
+  constName : Name
+  kind : ConstantKind
+  sigPromise : IO.Promise ConstantVal
+  constPromise : IO.Promise ConstPromiseVal
+  checkedEnvPromise : IO.Promise Kernel.Environment
+  allRealizationsPromise : IO.Promise (NameMap AsyncConst)
 
 /-- Creates fallback info to be used in case promises are dropped unfulfilled. -/
-private def mkFallbackConstInfo (constName : Name) (kind : ConstantKind) : ConstantInfo :=
+def mkFallbackConstInfo (constName : Name) (kind : ConstantKind) : ConstantInfo :=
   let fallbackVal : ConstantVal := {
     name := constName
     levelParams := []
@@ -1213,7 +1201,8 @@ abbrev ReplayFn (σ : Type) :=
 Environment extension, can only be generated by `registerEnvExtension` that allocates a unique index
 for this extension into each environment's extension state's array.
 -/
-structure EnvExtension (σ : Type) where private mk ::
+structure EnvExtension (σ : Type) where 
+  mk ::
   idx       : Nat
   mkInitial : IO σ
   asyncMode : EnvExtension.AsyncMode
@@ -1228,7 +1217,7 @@ structure EnvExtension (σ : Type) where private mk ::
 
 namespace EnvExtension
 
-private builtin_initialize envExtensionsRef : IO.Ref (Array (EnvExtension EnvExtensionState)) ← IO.mkRef #[]
+builtin_initialize envExtensionsRef : IO.Ref (Array (EnvExtension EnvExtensionState)) ← IO.mkRef #[]
 
 /--
   User-defined environment extensions are declared using the `initialize` command.
@@ -1249,9 +1238,9 @@ where
     else
       return exts
 
-private def invalidExtMsg := "invalid environment extension has been accessed"
+def invalidExtMsg := "invalid environment extension has been accessed"
 
-private unsafe def setStateImpl {σ} (ext : EnvExtension σ) (exts : Array EnvExtensionState) (s : σ) : Array EnvExtensionState :=
+unsafe def setStateImpl {σ} (ext : EnvExtension σ) (exts : Array EnvExtensionState) (s : σ) : Array EnvExtensionState :=
   if h : ext.idx < exts.size then
     exts.set ext.idx (unsafeCast s)
   else
@@ -1259,7 +1248,7 @@ private unsafe def setStateImpl {σ} (ext : EnvExtension σ) (exts : Array EnvEx
     have : Inhabited (Array EnvExtensionState) := ⟨exts⟩
     panic! invalidExtMsg
 
-private unsafe def modifyStateImpl {σ : Type} (ext : EnvExtension σ) (exts : Array EnvExtensionState) (f : σ → σ) : Array EnvExtensionState :=
+unsafe def modifyStateImpl {σ : Type} (ext : EnvExtension σ) (exts : Array EnvExtensionState) (f : σ → σ) : Array EnvExtensionState :=
   if ext.idx < exts.size then
     exts.modify ext.idx fun s =>
       let s : σ := unsafeCast s
@@ -1270,7 +1259,7 @@ private unsafe def modifyStateImpl {σ : Type} (ext : EnvExtension σ) (exts : A
     have : Inhabited (Array EnvExtensionState) := ⟨exts⟩
     panic! invalidExtMsg
 
-private unsafe def getStateImpl {σ} [Inhabited σ] (ext : EnvExtension σ) (exts : Array EnvExtensionState) : σ :=
+unsafe def getStateImpl {σ} [Inhabited σ] (ext : EnvExtension σ) (exts : Array EnvExtensionState) : σ :=
   if h : ext.idx < exts.size then
     unsafeCast exts[ext.idx]
   else
@@ -1316,7 +1305,7 @@ def setState {σ : Type} (ext : EnvExtension σ) (env : Environment) (s : σ) : 
   inline <| modifyState ext env fun _ => s
 
 -- `unsafe` fails to infer `Nonempty` here
-private unsafe def getStateUnsafe {σ : Type} [Inhabited σ] (ext : EnvExtension σ)
+unsafe def getStateUnsafe {σ : Type} [Inhabited σ] (ext : EnvExtension σ)
     (env : Environment) (asyncMode := ext.asyncMode) : σ :=
   -- safety: `ext`'s constructor is private, so we can assume the entry at `ext.idx` is of type `σ`
   match asyncMode with
@@ -1336,7 +1325,7 @@ opaque getState {σ : Type} [Inhabited σ] (ext : EnvExtension σ) (env : Enviro
   (asyncMode := ext.asyncMode) : σ
 
 -- `unsafe` fails to infer `Nonempty` here
-private unsafe def findStateAsyncUnsafe {σ : Type} [Inhabited σ]
+unsafe def findStateAsyncUnsafe {σ : Type} [Inhabited σ]
     (ext : EnvExtension σ) (env : Environment) (declName : Name) : σ := Id.run do
   -- analogous structure to `findAsync?`; see there
   -- safety: `ext`'s constructor is private, so we can assume the entry at `ext.idx` is of type `σ`
@@ -1400,7 +1389,7 @@ def registerEnvExtension {σ : Type} (mkInitial : IO σ)
   EnvExtension.envExtensionsRef.modify fun exts => exts.push (unsafe unsafeCast ext)
   pure ext
 
-private def mkInitialExtensionStates : IO (Array EnvExtensionState) := EnvExtension.mkInitialExtStates
+def mkInitialExtensionStates : IO (Array EnvExtensionState) := EnvExtension.mkInitialExtStates
 
 @[export lean_mk_empty_environment]
 def mkEmptyEnvironment (trustLevel : UInt32 := 0) : IO Environment := do
@@ -1647,7 +1636,7 @@ def OLeanLevel.adjustFileName (base : System.FilePath) : OLeanLevel → System.F
   | .server   => base.addExtension "server"
   | .private  => base.addExtension "private"
 
-private def looksLikeOldCodegenName : Name → Bool
+def looksLikeOldCodegenName : Name → Bool
   | .str _ s => s.startsWith "_cstage" || s.startsWith "_spec_" || s.startsWith "_elambda"
   | _        => false
 
@@ -1663,10 +1652,14 @@ def mkModuleData (env : Environment) (level : OLeanLevel := .private) : IO Modul
   let kenv := env.toKernelEnv
   let env := env.setExporting (level != .private)
   let constNames := kenv.constants.foldStage2 (fun names name _ => names.push name) #[]
-  -- not all kernel constants may be exported
-  let constants := constNames.filterMap fun n =>
-    env.find? n <|>
-    guard (looksLikeOldCodegenName n) *> kenv.find? n
+  -- not all kernel constants may be exported at `level < .private`
+  let constants := if level == .private then
+    -- (this branch makes very sure all kernel constants are exported eventually)
+    kenv.constants.foldStage2 (fun cs _ c => cs.push c) #[]
+  else
+    constNames.filterMap fun n =>
+      env.find? n <|>
+      guard (looksLikeOldCodegenName n) *> kenv.find? n
   let constNames := constants.map (·.name)
   return { env.header with
     extraConstNames := env.checked.get.extraConstNames.toArray
@@ -1696,7 +1689,7 @@ def mkExtNameMap (startingAt : Nat) : IO (Std.HashMap Name Nat) := do
     result := result.insert descr.name i
   return result
 
-private def setImportedEntries (states : Array EnvExtensionState) (mods : Array ModuleData)
+def setImportedEntries (states : Array EnvExtensionState) (mods : Array ModuleData)
     (startingAt : Nat := 0) : IO (Array EnvExtensionState) := do
   let mut states := states
   let extDescrs ← persistentEnvExtensionsRef.get
@@ -1729,11 +1722,11 @@ private def setImportedEntries (states : Array EnvExtensionState) (mods : Array 
 /-- "Forward declaration" for retrieving the number of builtin attributes. -/
 @[extern 1 "lean_get_num_attributes"] opaque getNumBuiltinAttributes : IO Nat
 
-private def ensureExtensionsArraySize (env : Environment) : IO Environment := do
+def ensureExtensionsArraySize (env : Environment) : IO Environment := do
   let exts ← EnvExtension.ensureExtensionsArraySize env.base.private.extensions
   return env.modifyCheckedAsync ({ · with extensions := exts })
 
-private partial def finalizePersistentExtensions (env : Environment) (mods : Array ModuleData) (opts : Options) : IO Environment := do
+partial def finalizePersistentExtensions (env : Environment) (mods : Array ModuleData) (opts : Options) : IO Environment := do
   loop 0 env
 where
   loop (i : Nat) (env : Environment) : IO Environment := do
@@ -1760,29 +1753,29 @@ where
     else
       return env
 
-private structure ImportedModule extends Import where
+structure ImportedModule extends Import where
   /-- All loaded incremental compacted regions. -/
   parts     : Array (ModuleData × CompactedRegion)
 
 /-- The main module data that will eventually be used to construct the kernel environment. -/
-private def ImportedModule.mainModule? (self : ImportedModule) : Option ModuleData := do
+def ImportedModule.mainModule? (self : ImportedModule) : Option ModuleData := do
   let (baseMod, _) ← self.parts[0]?
   self.parts[if baseMod.isModule && self.importAll then 2 else 0]?.map (·.1)
 
 /-- The main module data that will eventually be used to construct the publically accessible constants. -/
-private def ImportedModule.publicModule? (self : ImportedModule) : Option ModuleData := do
+def ImportedModule.publicModule? (self : ImportedModule) : Option ModuleData := do
   let (baseMod, _) ← self.parts[0]?
   return baseMod
 
 /-- The module data that should be used for server purposes. -/
-private def ImportedModule.serverData? (self : ImportedModule) (level : OLeanLevel) :
+def ImportedModule.serverData? (self : ImportedModule) (level : OLeanLevel) :
     Option ModuleData := do
   let (baseMod, _) ← self.parts[0]?
   self.parts[if baseMod.isModule && level != .exported then 1 else 0]?.map (·.1)
 
 structure ImportState where
-  private moduleNameMap : Std.HashMap Name ImportedModule := {}
-  private moduleNames   : Array Name := #[]
+  moduleNameMap : Std.HashMap Name ImportedModule := {}
+  moduleNames   : Array Name := #[]
 
 def throwAlreadyImported (s : ImportState) (const2ModIdx : Std.HashMap Name ModuleIdx) (modIdx : Nat) (cname : Name) : IO α := do
   let modName := s.moduleNames[modIdx]!
@@ -1794,7 +1787,35 @@ abbrev ImportStateM := StateRefT ImportState IO
 @[inline] nonrec def ImportStateM.run (x : ImportStateM α) (s : ImportState := {}) : IO (α × ImportState) :=
   x.run s
 
-partial def importModulesCore (imports : Array Import) (forceImportAll := true) :
+def ModuleArtifacts.oleanParts (arts : ModuleArtifacts) : Array System.FilePath := Id.run do
+  let mut fnames := #[]
+  -- Opportunistically load all available parts.
+  -- Producer (e.g., Lake) should limit parts to the proper import level.
+  if let some mFile := arts.olean? then
+    fnames := fnames.push mFile
+    if let some sFile := arts.oleanServer? then
+      fnames := fnames.push sFile
+      if let some pFile := arts.oleanPrivate? then
+        fnames := fnames.push pFile
+  return fnames
+
+def findOLeanParts (mod : Name) : IO (Array System.FilePath) := do
+  let mFile ← findOLean mod
+  unless (← mFile.pathExists) do
+    throw <| IO.userError s!"object file '{mFile}' of module {mod} does not exist"
+  let mut fnames := #[mFile]
+  -- Opportunistically load all available parts.
+  -- Necessary because the import level may be upgraded a later import.
+  let sFile := OLeanLevel.server.adjustFileName mFile
+  if (← sFile.pathExists) then
+    fnames := fnames.push sFile
+    let pFile := OLeanLevel.private.adjustFileName mFile
+    if (← pFile.pathExists) then
+      fnames := fnames.push pFile
+  return fnames
+
+partial def importModulesCore
+    (imports : Array Import) (forceImportAll := true) (arts : NameMap ModuleArtifacts := {}) :
     ImportStateM Unit := go
 where go := do
   for i in imports do
@@ -1811,19 +1832,14 @@ where go := do
           if let some mod := mod.mainModule? then
             importModulesCore (forceImportAll := true) mod.imports
       continue
-    let mFile ← findOLean i.module
-    unless (← mFile.pathExists) do
-      throw <| IO.userError s!"object file '{mFile}' of module {i.module} does not exist"
-    let mut fnames := #[mFile]
-    -- opportunistically load all available parts in case `importPrivate` is upgraded by a later
-    -- import
-    -- TODO: use Lake data to retrieve ultimate import level immediately
-    let sFile := OLeanLevel.server.adjustFileName mFile
-    if (← sFile.pathExists) then
-      fnames := fnames.push sFile
-      let pFile := OLeanLevel.private.adjustFileName mFile
-      if (← pFile.pathExists) then
-        fnames := fnames.push pFile
+    let fnames ←
+      if let some arts := arts.find? i.module then
+        let fnames := arts.oleanParts
+        if fnames.isEmpty then
+          findOLeanParts i.module
+        else pure fnames
+      else
+        findOLeanParts i.module
     let parts ← readModuleDataParts fnames
     -- `imports` is identical for each part
     let some (baseMod, _) := parts[0]? | unreachable!
@@ -1860,7 +1876,7 @@ and theorems are (mostly) opaque in Lean. For `Acc.rec`, we may unfold theorems
 during type-checking, but we are assuming this is not an issue in practice,
 and we are planning to address this issue in the future.
 -/
-private def subsumesInfo (cinfo₁ cinfo₂ : ConstantInfo) : Bool :=
+def subsumesInfo (cinfo₁ cinfo₂ : ConstantInfo) : Bool :=
   cinfo₁.name == cinfo₂.name &&
     cinfo₁.type == cinfo₂.type &&
     cinfo₁.levelParams == cinfo₂.levelParams &&
@@ -1995,13 +2011,14 @@ as if no `module` annotations were present in the imports.
 -/
 def importModules (imports : Array Import) (opts : Options) (trustLevel : UInt32 := 0)
     (plugins : Array System.FilePath := #[]) (leakEnv := false) (loadExts := false)
-    (level := OLeanLevel.private) : IO Environment := profileitIO "import" opts do
+    (level := OLeanLevel.private) (arts : NameMap ModuleArtifacts := {})
+    : IO Environment := profileitIO "import" opts do
   for imp in imports do
     if imp.module matches .anonymous then
       throw <| IO.userError "import failed, trying to import module with anonymous name"
   withImporting do
     plugins.forM Lean.loadPlugin
-    let (_, s) ← importModulesCore (forceImportAll := level == .private) imports |>.run
+    let (_, s) ← importModulesCore (forceImportAll := level == .private) imports arts |>.run
     finalizeImport (leakEnv := leakEnv) (loadExts := loadExts) (level := level)
       s imports opts trustLevel
 
@@ -2035,7 +2052,7 @@ def Kernel.setDiagnostics (env : Lean.Environment) (diag : Diagnostics) : Lean.E
 namespace Environment
 
 @[export lean_elab_environment_update_base_after_kernel_add]
-private def updateBaseAfterKernelAdd (env : Environment) (kenv : Kernel.Environment) (decl : Declaration) : Environment := {
+def updateBaseAfterKernelAdd (env : Environment) (kenv : Kernel.Environment) (decl : Declaration) : Environment := {
     env with
     checked := .pure kenv
     -- HACK: the old codegen adds some helper constants directly to the kernel environment, we need
@@ -2077,7 +2094,7 @@ def displayStats (env : Environment) : IO Unit := do
 @[extern "lean_eval_const"]
 unsafe opaque evalConst (α) (env : @& Environment) (opts : @& Options) (constName : @& Name) : Except String α
 
-private def throwUnexpectedType {α} (typeName : Name) (constName : Name) : ExceptT String Id α :=
+def throwUnexpectedType {α} (typeName : Name) (constName : Name) : ExceptT String Id α :=
   throw ("unexpected type at '" ++ toString constName ++ "', `" ++ toString typeName ++ "` expected")
 
 /--

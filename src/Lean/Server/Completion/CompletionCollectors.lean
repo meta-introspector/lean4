@@ -19,13 +19,13 @@ open FuzzyMatching
 
 section Infrastructure
 
-  private structure Context where
+  structure Context where
     params            : CompletionParams
     completionInfoPos : Nat
 
 
   /-- Intermediate state while completions are being computed. -/
-  private structure State where
+  structure State where
     /-- All completion items and their fuzzy match scores so far. -/
     items  : Array CompletionItem := #[]
 
@@ -36,7 +36,7 @@ section Infrastructure
   private abbrev M := ReaderT Context $ StateRefT State $ CancellableT MetaM
 
   /-- Adds a new completion item to the state in `M`. -/
-  private def addItem
+  def addItem
       (item  : CompletionItem)
       (id?   : Option CompletionIdentifier := none)
       : M Unit := do
@@ -54,7 +54,7 @@ section Infrastructure
   Adds a new completion item with the given `label`, `id`, `kind` and `score` to the state in `M`.
   Computes the doc string from the environment if available.
   -/
-  private def addUnresolvedCompletionItem
+  def addUnresolvedCompletionItem
       (label         : Name)
       (id            : CompletionIdentifier)
       (kind          : CompletionItemKind)
@@ -68,7 +68,7 @@ section Infrastructure
     let item := { label := label.toString, kind? := kind, tags? }
     addItem item id
 
-  private def getCompletionKindForDecl (constInfo : ConstantInfo) : M CompletionItemKind := do
+  def getCompletionKindForDecl (constInfo : ConstantInfo) : M CompletionItemKind := do
     let env ← getEnv
     if constInfo.isCtor then
       return CompletionItemKind.constructor
@@ -91,19 +91,19 @@ section Infrastructure
       else
         return CompletionItemKind.constant
 
-  private def addUnresolvedCompletionItemForDecl (label : Name) (declName : Name) : M Unit := do
+  def addUnresolvedCompletionItemForDecl (label : Name) (declName : Name) : M Unit := do
     if let some c := (← getEnv).find? declName then
       addUnresolvedCompletionItem label (.const declName) (← getCompletionKindForDecl c)
 
-  private def addKeywordCompletionItem (keyword : String) : M Unit := do
+  def addKeywordCompletionItem (keyword : String) : M Unit := do
     let item := { label := keyword, detail? := "keyword", documentation? := none, kind? := CompletionItemKind.keyword }
     addItem item
 
-  private def addNamespaceCompletionItem (ns : Name) : M Unit := do
+  def addNamespaceCompletionItem (ns : Name) : M Unit := do
     let item := { label := ns.toString, detail? := "namespace", documentation? := none, kind? := CompletionItemKind.module }
     addItem item
 
-  private def runM
+  def runM
       (params            : CompletionParams)
       (completionInfoPos : Nat)
       (ctx               : ContextInfo)
@@ -121,7 +121,7 @@ end Infrastructure
 
 section Utils
 
-  private partial def containsSuccessiveCharacters (a b : String) : Bool :=
+  partial def containsSuccessiveCharacters (a b : String) : Bool :=
     go ⟨0⟩ ⟨0⟩
   where
     go (aPos bPos : String.Pos) : Bool :=
@@ -139,7 +139,7 @@ section Utils
         else
           go aPos bPos
 
-  private def normPrivateName? (declName : Name) : MetaM (Option Name) := do
+  def normPrivateName? (declName : Name) : MetaM (Option Name) := do
     match privateToUserName? declName with
     | none => return declName
     | some userName =>
@@ -154,7 +154,7 @@ section Utils
 
     Remark: `danglingDot == true` when the completion point is an identifier followed by `.`.
   -/
-  private def matchDecl? (ns : Name) (id : Name) (danglingDot : Bool) (declName : Name) : MetaM (Option Name) := do
+  def matchDecl? (ns : Name) (id : Name) (danglingDot : Bool) (declName : Name) : MetaM (Option Name) := do
     let some declName ← normPrivateName? declName
       | return none
     if !ns.isPrefixOf declName then
@@ -183,7 +183,7 @@ section Utils
           return none
     return none
 
-  private def forEligibleDeclsWithCancellationM [Monad m] [MonadEnv m]
+  def forEligibleDeclsWithCancellationM [Monad m] [MonadEnv m]
       [MonadLiftT (ST IO.RealWorld) m] [MonadCancellable m] [MonadLiftT IO m]
       (f : Name → ConstantInfo → m PUnit) : m PUnit := do
     let _ ← StateT.run (s := 0) <| forEligibleDeclsM fun decl ci => do
@@ -197,7 +197,7 @@ end Utils
 
 section IdCompletionUtils
 
-  private def matchAtomic (id : Name) (declName : Name) (danglingDot : Bool) : Bool :=
+  def matchAtomic (id : Name) (declName : Name) (danglingDot : Bool) : Bool :=
     if danglingDot then
       false
     else
@@ -209,7 +209,7 @@ section IdCompletionUtils
   Truncate the given identifier and make sure it has length `≤ newLength`.
   This function assumes `id` does not contain `Name.num` constructors.
   -/
-  private partial def truncate (id : Name) (newLen : Nat) : Name :=
+  partial def truncate (id : Name) (newLen : Nat) : Name :=
     let rec go (id : Name) : Name × Nat :=
       match id with
       | Name.anonymous => (id, 0)
@@ -270,7 +270,7 @@ end IdCompletionUtils
 section DotCompletionUtils
 
   /-- Return `true` if `e` is a `declName`-application, or can be unfolded (delta-reduced) to one. -/
-  private partial def isDefEqToAppOf (e : Expr) (declName : Name) : MetaM Bool := do
+  partial def isDefEqToAppOf (e : Expr) (declName : Name) : MetaM Bool := do
     let isConstOf := match e.getAppFn with
       | .const name .. => (privateToUserName? name).getD name == declName
       | _ => false
@@ -279,7 +279,7 @@ section DotCompletionUtils
     let some e ← unfoldeDefinitionGuarded? e | return false
     isDefEqToAppOf e declName
 
-  private def isDotCompletionMethod (typeName : Name) (info : ConstantInfo) : MetaM Bool :=
+  def isDotCompletionMethod (typeName : Name) (info : ConstantInfo) : MetaM Bool :=
     forallTelescopeReducing info.type fun xs _ => do
       for x in xs do
         let localDecl ← x.fvarId!.getDecl
@@ -291,14 +291,14 @@ section DotCompletionUtils
   /--
   Checks whether the expected type of `info.type` can be reduced to an application of `typeName`.
   -/
-  private def isDotIdCompletionMethod (typeName : Name) (info : ConstantInfo) : MetaM Bool := do
+  def isDotIdCompletionMethod (typeName : Name) (info : ConstantInfo) : MetaM Bool := do
     forallTelescopeReducing info.type fun _ type =>
       isDefEqToAppOf type.consumeMData typeName
 
   /--
   Converts `n` to `Name.anonymous` if `n` is a private prefix (see `Lean.isPrivatePrefix`).
   -/
-  private def stripPrivatePrefix (n : Name) : Name :=
+  def stripPrivatePrefix (n : Name) : Name :=
     match n with
     | .num _ 0 => if isPrivatePrefix n then .anonymous else n
     | _ => n
@@ -308,7 +308,7 @@ section DotCompletionUtils
   private prefixes in both names.
   Necessary because the namespaces of private names do not contain private prefixes.
   -/
-  private partial def cmpModPrivate (n₁ n₂ : Name) : Ordering :=
+  partial def cmpModPrivate (n₁ n₂ : Name) : Ordering :=
     let n₁ := stripPrivatePrefix n₁
     let n₂ := stripPrivatePrefix n₂
     match n₁, n₂ with
@@ -332,13 +332,13 @@ section DotCompletionUtils
   strip the private prefix from deep in the name, letting us reject most names without
   having to scan the full name first.
   -/
-  private def NameSetModPrivate := RBTree Name cmpModPrivate
+  def NameSetModPrivate := RBTree Name cmpModPrivate
 
   /--
     Given a type, try to extract relevant type names for dot notation field completion.
     We extract the type name, parent struct names, and unfold the type.
     The process mimics the dot notation elaboration procedure at `App.lean` -/
-  private def getDotCompletionTypeNameSet (type : Expr) : MetaM NameSetModPrivate := do
+  def getDotCompletionTypeNameSet (type : Expr) : MetaM NameSetModPrivate := do
     let mut set := .empty
     for typeName in ← getDotCompletionTypeNames type do
       set := set.insert typeName
@@ -346,7 +346,7 @@ section DotCompletionUtils
 
 end DotCompletionUtils
 
-private def idCompletionCore
+def idCompletionCore
     (ctx         : ContextInfo)
     (stx         : Syntax)
     (id          : Name)

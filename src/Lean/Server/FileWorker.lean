@@ -144,29 +144,29 @@ def WorkerContext.resolveServerRequestResponse (ctx : WorkerContext) (id : Reque
 
 section Elab
   -- Placed here instead of Lean.Server.Utils because of an import loop
-  private def mkIleanInfoNotification (method : String) (m : DocumentMeta)
+  def mkIleanInfoNotification (method : String) (m : DocumentMeta)
       (trees : Array Elab.InfoTree) : BaseIO (JsonRpc.Notification Lsp.LeanIleanInfoParams) := do
     let references ← findModuleRefs m.text trees (localVars := true) |>.toLspModuleRefs
     let param := { version := m.version, references }
     return { method, param }
 
-  private def mkIleanInfoUpdateNotification : DocumentMeta → Array Elab.InfoTree →
+  def mkIleanInfoUpdateNotification : DocumentMeta → Array Elab.InfoTree →
       BaseIO (JsonRpc.Notification Lsp.LeanIleanInfoParams) :=
     mkIleanInfoNotification "$/lean/ileanInfoUpdate"
 
-  private def mkIleanInfoFinalNotification : DocumentMeta → Array Elab.InfoTree →
+  def mkIleanInfoFinalNotification : DocumentMeta → Array Elab.InfoTree →
       BaseIO (JsonRpc.Notification Lsp.LeanIleanInfoParams) :=
     mkIleanInfoNotification "$/lean/ileanInfoFinal"
 
   /-- Yields a `$/lean/importClosure` notification. -/
-  private def mkImportClosureNotification (importClosure : Array DocumentUri)
+  def mkImportClosureNotification (importClosure : Array DocumentUri)
       : JsonRpc.Notification Lsp.LeanImportClosureParams := {
     method := "$/lean/importClosure",
     param := { importClosure : LeanImportClosureParams }
   }
 
   /-- State of `reportSnapshots`. -/
-  private structure ReportSnapshotsState where
+  structure ReportSnapshotsState where
     /-- Whether we have waited for a snapshot to finish at least once (see debouncing below). -/
     hasBlocked := false
     /-- All info trees encountered so far. -/
@@ -199,7 +199,7 @@ This option can only be set on the command line, not in the lakefile or via `set
   Sends a `textDocument/publishDiagnostics` notification to the client that contains the diagnostics
   in `ctx.stickyDiagnosticsRef` and `doc.diagnosticsRef`.
   -/
-  private def publishDiagnostics (ctx : WorkerContext) (doc : EditableDocumentCore)
+  def publishDiagnostics (ctx : WorkerContext) (doc : EditableDocumentCore)
       : BaseIO Unit := do
     let stickyInteractiveDiagnostics ← ctx.stickyDiagnosticsRef.get
     let docInteractiveDiagnostics ← doc.diagnosticsRef.get
@@ -223,7 +223,7 @@ This option can only be set on the command line, not in the lakefile or via `set
     3. afterwards, each time new information is found in a snapshot
     4. at the very end, if we never blocked (e.g. emptying a file should make
        sure to empty diagnostics as well eventually) -/
-  private partial def reportSnapshots (ctx : WorkerContext) (doc : EditableDocumentCore)
+  partial def reportSnapshots (ctx : WorkerContext) (doc : EditableDocumentCore)
       (cancelTk : CancelToken) : BaseIO (ServerTask Unit) :=
     ServerTask.BaseIO.asTask do
       IO.sleep (server.reportDelayMs.get ctx.cmdlineOpts).toUInt32 -- "Debouncing 1."
@@ -417,6 +417,7 @@ def setupImports
 
   return .ok {
     mainModuleName := meta.mod
+    imports
     opts
     plugins := fileSetupResult.plugins
   }

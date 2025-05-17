@@ -12,7 +12,7 @@ import Lean.Server.Rpc.Basic
 
 namespace Lean.Server
 
-private structure RpcProcedure where
+structure RpcProcedure where
   wrapper : (sessionId : UInt64) → Json → RequestM (RequestTask Json)
   deriving Inhabited
 

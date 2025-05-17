@@ -100,7 +100,7 @@ private partial def winnowExpr (e : Expr) : MetaM Expr := do
 /--
 State for name generation.
 -/
-private structure MkNameState where
+structure MkNameState where
   /-- Keeps track of expressions already visited so that we do not include them again. -/
   seen : ExprSet := {}
   /-- Keeps track of constants that appear in the generated name. -/

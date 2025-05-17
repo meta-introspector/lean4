@@ -215,19 +215,19 @@ def checkValidCtorModifier [Monad m] [MonadError m] (modifiers : Modifiers) : m 
   if modifiers.attrs.size != 0 then
     throwError "invalid use of attributes in constructor declaration"
 
-private def checkUnsafe (rs : Array PreElabHeaderResult) : TermElabM Unit := do
+def checkUnsafe (rs : Array PreElabHeaderResult) : TermElabM Unit := do
   let isUnsafe := rs[0]!.view.modifiers.isUnsafe
   for r in rs do
     unless r.view.modifiers.isUnsafe == isUnsafe do
       throwErrorAt r.view.ref "invalid inductive type, cannot mix unsafe and safe declarations in a mutually inductive datatypes"
 
-private def checkClass (rs : Array PreElabHeaderResult) : TermElabM Unit := do
+def checkClass (rs : Array PreElabHeaderResult) : TermElabM Unit := do
   if rs.size > 1 then
     for r in rs do
       if r.view.isClass then
         throwErrorAt r.view.ref "invalid inductive type, mutual classes are not supported"
 
-private def checkNumParams (rs : Array PreElabHeaderResult) : TermElabM Nat := do
+def checkNumParams (rs : Array PreElabHeaderResult) : TermElabM Nat := do
   let numParams := rs[0]!.numParams
   for r in rs do
     unless r.numParams == numParams do
@@ -247,7 +247,7 @@ def withExplicitToImplicit (xs : Array Expr) (k : TermElabM α) : TermElabM α :
 /--
 Auxiliary function for checking whether the types in mutually inductive declaration are compatible.
 -/
-private def checkParamsAndResultType (type firstType : Expr) (numParams : Nat) : TermElabM Unit := do
+def checkParamsAndResultType (type firstType : Expr) (numParams : Nat) : TermElabM Unit := do
   try
     forallTelescopeCompatible type firstType numParams fun _ type firstType =>
     forallTelescopeReducing type fun _ type =>
@@ -266,7 +266,7 @@ private def checkParamsAndResultType (type firstType : Expr) (numParams : Nat) :
 /--
 Auxiliary function for checking whether the types in mutually inductive declaration are compatible.
 -/
-private def checkHeaders (rs : Array PreElabHeaderResult) (numParams : Nat) (i : Nat) (firstType? : Option Expr) : TermElabM Unit := do
+def checkHeaders (rs : Array PreElabHeaderResult) (numParams : Nat) (i : Nat) (firstType? : Option Expr) : TermElabM Unit := do
   if h : i < rs.size then
     let type ← checkHeader rs[i] numParams firstType?
     checkHeaders rs numParams (i+1) type
@@ -279,7 +279,7 @@ where
       withRef r.view.ref <| checkParamsAndResultType type firstType numParams
       return firstType
 
-private def elabHeadersAux (views : Array InductiveView) (i : Nat) (acc : Array PreElabHeaderResult) : TermElabM (Array PreElabHeaderResult) :=
+def elabHeadersAux (views : Array InductiveView) (i : Nat) (acc : Array PreElabHeaderResult) : TermElabM (Array PreElabHeaderResult) :=
   Term.withAutoBoundImplicitForbiddenPred (fun n => views.any (·.shortDeclName == n)) do
     if h : i < views.size then
       let view := views[i]
@@ -311,7 +311,7 @@ private def elabHeadersAux (views : Array InductiveView) (i : Nat) (acc : Array 
 /--
 Elaborates all the headers in the inductive views.
 -/
-private def elabHeaders (views : Array InductiveView) : TermElabM (Array PreElabHeaderResult) := do
+def elabHeaders (views : Array InductiveView) : TermElabM (Array PreElabHeaderResult) := do
   let rs ← elabHeadersAux views 0 #[]
   if rs.size > 1 then
     checkUnsafe rs
@@ -327,7 +327,7 @@ We use the parameters of rs[0].
 Note that this method is executed after we executed `checkHeaders` and established all
 parameters are compatible.
 -/
-private def withInductiveLocalDecls (rs : Array PreElabHeaderResult) (x : Array Expr → Array Expr → TermElabM α) : TermElabM α := do
+def withInductiveLocalDecls (rs : Array PreElabHeaderResult) (x : Array Expr → Array Expr → TermElabM α) : TermElabM α := do
   let r0 := rs[0]!
   forallBoundedTelescope r0.type r0.numParams fun params _ => withRef r0.view.ref do
     let rec loop (i : Nat) (indFVars : Array Expr) := do
@@ -342,24 +342,24 @@ private def withInductiveLocalDecls (rs : Array PreElabHeaderResult) (x : Array 
         x params indFVars
     loop 0 #[]
 
-private def InductiveElabStep1.checkLevelNames (views : Array InductiveView) : TermElabM Unit := do
+def InductiveElabStep1.checkLevelNames (views : Array InductiveView) : TermElabM Unit := do
   if h : views.size > 1 then
     let levelNames := views[0].levelNames
     for view in views do
       unless view.levelNames == levelNames do
         throwErrorAt view.ref "invalid inductive type, universe parameters mismatch in mutually inductive datatypes"
 
-private def ElabHeaderResult.checkLevelNames (rs : Array PreElabHeaderResult) : TermElabM Unit := do
+def ElabHeaderResult.checkLevelNames (rs : Array PreElabHeaderResult) : TermElabM Unit := do
   if h : rs.size > 1 then
     let levelNames := rs[0].levelNames
     for r in rs do
       unless r.levelNames == levelNames do
         throwErrorAt r.view.ref "invalid inductive type, universe parameters mismatch in mutually inductive datatypes"
 
-private def getArity (indType : InductiveType) : MetaM Nat :=
+def getArity (indType : InductiveType) : MetaM Nat :=
   forallTelescopeReducing indType.type fun xs _ => return xs.size
 
-private def resetMaskAt (mask : Array Bool) (i : Nat) : Array Bool :=
+def resetMaskAt (mask : Array Bool) (i : Nat) : Array Bool :=
   mask.setIfInBounds i false
 
 /--
@@ -367,7 +367,7 @@ Compute a bit-mask that for `indType`. The size of the resulting array `result` 
 The first `numParams` elements are `false` since they are parameters.
 For `i ∈ [numParams, arity)`, we have that `result[i]` if this index of the inductive family is fixed.
 -/
-private def computeFixedIndexBitMask (numParams : Nat) (indType : InductiveType) (indFVars : Array Expr) : MetaM (Array Bool) := do
+def computeFixedIndexBitMask (numParams : Nat) (indType : InductiveType) (indFVars : Array Expr) : MetaM (Array Bool) := do
   let arity ← getArity indType
   if arity ≤ numParams then
     return .replicate arity false
@@ -410,7 +410,7 @@ private def computeFixedIndexBitMask (numParams : Nat) (indType : InductiveType)
     go indType.ctors
 
 /-- Return true iff `arrowType` is an arrow and its domain is defeq to `type` -/
-private def isDomainDefEq (arrowType : Expr) (type : Expr) : MetaM Bool := do
+def isDomainDefEq (arrowType : Expr) (type : Expr) : MetaM Bool := do
   if !arrowType.isForall then
     return false
   else
@@ -429,7 +429,7 @@ private def isDomainDefEq (arrowType : Expr) (type : Expr) : MetaM Bool := do
 /--
 Convert fixed indices to parameters.
 -/
-private def fixedIndicesToParams (numParams : Nat) (indTypes : Array InductiveType) (indFVars : Array Expr) : MetaM Nat := do
+def fixedIndicesToParams (numParams : Nat) (indTypes : Array InductiveType) (indFVars : Array Expr) : MetaM Nat := do
   if !inductive.autoPromoteIndices.get (← getOptions) then
     return numParams
   let masks ← indTypes.mapM (computeFixedIndexBitMask numParams · indFVars)
@@ -461,7 +461,7 @@ private def fixedIndicesToParams (numParams : Nat) (indTypes : Array InductiveTy
         return i
     go numParams type typesToCheck
 
-private def getResultingUniverse : List InductiveType → TermElabM Level
+def getResultingUniverse : List InductiveType → TermElabM Level
   | []           => throwError "unexpected empty inductive declaration"
   | indType :: _ => forallTelescopeReducing indType.type fun _ r => do
     let r ← whnfD r
@@ -491,7 +491,7 @@ def shouldInferResultUniverse (u : Level) : TermElabM (Option LMVarId) := do
 Converts universe metavariables into new parameters. It skips `univToInfer?` (the inductive datatype resulting universe) because
 it should be inferred later using `inferResultingUniverse`.
 -/
-private def levelMVarToParam (indTypes : List InductiveType) (univToInfer? : Option LMVarId) : TermElabM (List InductiveType) :=
+def levelMVarToParam (indTypes : List InductiveType) (univToInfer? : Option LMVarId) : TermElabM (List InductiveType) :=
   indTypes.mapM fun indType => do
     let type  ← levelMVarToParam' indType.type
     let ctors ← indType.ctors.mapM fun ctor => do
@@ -502,13 +502,13 @@ where
   levelMVarToParam' (type : Expr) : TermElabM Expr := do
     Term.levelMVarToParam type (except := fun mvarId => univToInfer? == some mvarId)
 
-private structure AccLevelState where
+structure AccLevelState where
   levels : Array Level := #[]
   /-- When we encounter `u ≤ ?r + k` with `k > 0`, we add `(u, k)` to the "bad levels".
   We use this to compute what the universe "should" have been. -/
   badLevels : Array (Level × Nat) := #[]
 
-private def AccLevelState.push (acc : AccLevelState) (u : Level) (offset : Nat) : AccLevelState :=
+def AccLevelState.push (acc : AccLevelState) (u : Level) (offset : Nat) : AccLevelState :=
   if offset == 0 then
     { acc with levels := if acc.levels.contains u then acc.levels else acc.levels.push u }
   else
@@ -584,7 +584,7 @@ def withViewTypeRef [Monad m] [MonadRef m] (views : Array InductiveView) (k : m 
 /--
 Auxiliary function for `updateResultingUniverse`. Computes a list of levels `l₁ ... lₙ` such that `r := max l₁ ... lₙ` can be a solution to the constraint problem.
 -/
-private def collectUniverses (views : Array InductiveView) (r : Level) (rOffset : Nat) (numParams : Nat) (indTypes : List InductiveType) : TermElabM (Array Level) := do
+def collectUniverses (views : Array InductiveView) (r : Level) (rOffset : Nat) (numParams : Nat) (indTypes : List InductiveType) : TermElabM (Array Level) := do
   let (_, acc) ← go |>.run {}
   if !acc.badLevels.isEmpty then
     withViewTypeRef views do
@@ -633,7 +633,7 @@ Specialized to structures, the heuristic is that we prefer a `Prop` instead of a
 when it could be a syntactic subsingleton.
 Exception: no-field structures are `Type` since they are likely stubbed-out declarations.
 -/
-private def isPropCandidate (numParams : Nat) (indTypes : List InductiveType) : MetaM Bool := do
+def isPropCandidate (numParams : Nat) (indTypes : List InductiveType) : MetaM Bool := do
   unless indTypes.foldl (fun n indType => max n indType.ctors.length) 0 == 1 do
     return false
   for indType in indTypes do
@@ -643,7 +643,7 @@ private def isPropCandidate (numParams : Nat) (indTypes : List InductiveType) : 
         return true
   return false
 
-private def mkResultUniverse (us : Array Level) (rOffset : Nat) (preferProp : Bool) : Level :=
+def mkResultUniverse (us : Array Level) (rOffset : Nat) (preferProp : Bool) : Level :=
   if us.isEmpty && rOffset == 0 then
     if preferProp then levelZero else levelOne
   else
@@ -659,7 +659,7 @@ try to infer the unique `?r` such that `?r + k` is the supremum of the construct
 
 Usually, we also throw in the constraint that `1 ≤ ?r + k`, but if `isPropCandidate` is true we allow the solution `?r + k = 0`.
 -/
-private def updateResultingUniverse (views : Array InductiveView) (numParams : Nat) (indTypes : List InductiveType) : TermElabM (List InductiveType) := do
+def updateResultingUniverse (views : Array InductiveView) (numParams : Nat) (indTypes : List InductiveType) : TermElabM (List InductiveType) := do
   let r₀ ← getResultingUniverse indTypes
   let rOffset : Nat   := r₀.getOffset
   let r       : Level := r₀.getLevelOffset
@@ -679,7 +679,7 @@ Heuristic: users don't tend to want types that are universe polymorphic across b
 This can be disabled by setting the option `bootstrap.inductiveCheckResultingUniverse` to false,
 unless one of the inductive commands requires it (for instance `structure` due to projections).
 -/
-private def checkResultingUniversePolymorphism (views : Array InductiveView) (u : Level) (_numParams : Nat) (_indTypes : List InductiveType) : TermElabM Unit := do
+def checkResultingUniversePolymorphism (views : Array InductiveView) (u : Level) (_numParams : Nat) (_indTypes : List InductiveType) : TermElabM Unit := do
   let doErrFor := fun view =>
     view.withTypeRef do
       throwError "\
@@ -696,7 +696,7 @@ private def checkResultingUniversePolymorphism (views : Array InductiveView) (u 
 /--
 Solves for level metavariables in constructor argument types that are completely determined by the resulting type.
 -/
-private partial def propagateUniversesToConstructors (numParams : Nat) (indTypes : List InductiveType) : TermElabM Unit := do
+partial def propagateUniversesToConstructors (numParams : Nat) (indTypes : List InductiveType) : TermElabM Unit := do
   let u := (← instantiateLevelMVars (← getResultingUniverse indTypes)).normalize
   unless u.isZero do
     let r := u.getLevelOffset
@@ -750,7 +750,7 @@ where
         pure ()
 
 /-- Checks the universe constraints for each constructor. -/
-private def checkResultingUniverses (views : Array InductiveView) (elabs' : Array InductiveElabStep2)
+def checkResultingUniverses (views : Array InductiveView) (elabs' : Array InductiveElabStep2)
     (numParams : Nat) (indTypes : List InductiveType) : TermElabM Unit := do
   let u := (← instantiateLevelMVars (← getResultingUniverse indTypes)).normalize
   checkResultingUniversePolymorphism views u numParams indTypes
@@ -773,21 +773,21 @@ private def checkResultingUniverses (views : Array InductiveView) (elabs' : Arra
               which is not less than or equal to the inductive type's resulting universe level{indentD u}"
             withCtorRef views ctor.name <| throwError msg
 
-private def collectUsed (indTypes : List InductiveType) : StateRefT CollectFVars.State MetaM Unit := do
+def collectUsed (indTypes : List InductiveType) : StateRefT CollectFVars.State MetaM Unit := do
   indTypes.forM fun indType => do
     indType.type.collectFVars
     indType.ctors.forM fun ctor =>
       ctor.type.collectFVars
 
-private def removeUnused (elabs : Array InductiveElabStep2) (vars : Array Expr) (indTypes : List InductiveType) : TermElabM (LocalContext × LocalInstances × Array Expr) := do
+def removeUnused (elabs : Array InductiveElabStep2) (vars : Array Expr) (indTypes : List InductiveType) : TermElabM (LocalContext × LocalInstances × Array Expr) := do
   let (_, used) ← (collectUsed indTypes *> elabs.forM fun e => e.collectUsedFVars).run {}
   Meta.removeUnused vars used
 
-private def withUsed {α} (elabs : Array InductiveElabStep2) (vars : Array Expr) (indTypes : List InductiveType) (k : Array Expr → TermElabM α) : TermElabM α := do
+def withUsed {α} (elabs : Array InductiveElabStep2) (vars : Array Expr) (indTypes : List InductiveType) (k : Array Expr → TermElabM α) : TermElabM α := do
   let (lctx, localInsts, vars) ← removeUnused elabs vars indTypes
   withLCtx lctx localInsts <| k vars
 
-private def updateParams (vars : Array Expr) (indTypes : List InductiveType) : TermElabM (List InductiveType) :=
+def updateParams (vars : Array Expr) (indTypes : List InductiveType) : TermElabM (List InductiveType) :=
   indTypes.mapM fun indType => do
     let type ← mkForallFVars vars indType.type
     let ctors ← indType.ctors.mapM fun ctor => do
@@ -795,7 +795,7 @@ private def updateParams (vars : Array Expr) (indTypes : List InductiveType) : T
       return { ctor with type := ctorType }
     return { indType with type, ctors }
 
-private def collectLevelParamsInInductive (indTypes : List InductiveType) : Array Name := Id.run do
+def collectLevelParamsInInductive (indTypes : List InductiveType) : Array Name := Id.run do
   let mut usedParams : CollectLevelParams.State := {}
   for indType in indTypes do
     usedParams := collectLevelParams usedParams indType.type
@@ -803,7 +803,7 @@ private def collectLevelParamsInInductive (indTypes : List InductiveType) : Arra
       usedParams := collectLevelParams usedParams ctor.type
   return usedParams.params
 
-private def mkIndFVar2Const (views : Array InductiveView) (indFVars : Array Expr) (levelNames : List Name) : ExprMap Expr := Id.run do
+def mkIndFVar2Const (views : Array InductiveView) (indFVars : Array Expr) (levelNames : List Name) : ExprMap Expr := Id.run do
   let levelParams := levelNames.map mkLevelParam;
   let mut m : ExprMap Expr := {}
   for h : i in [:views.size] do
@@ -814,7 +814,7 @@ private def mkIndFVar2Const (views : Array InductiveView) (indFVars : Array Expr
 
 /-- Remark: `numVars <= numParams`. `numVars` is the number of context `variables` used in the inductive declaration,
    and `numParams` is `numVars` + number of explicit parameters provided in the declaration. -/
-private def replaceIndFVarsWithConsts (views : Array InductiveView) (indFVars : Array Expr) (levelNames : List Name)
+def replaceIndFVarsWithConsts (views : Array InductiveView) (indFVars : Array Expr) (levelNames : List Name)
     (numVars : Nat) (numParams : Nat) (indTypes : List InductiveType) : TermElabM (List InductiveType) :=
   let indFVar2Const := mkIndFVar2Const views indFVars levelNames
   indTypes.mapM fun indType => do
@@ -830,7 +830,7 @@ private def replaceIndFVarsWithConsts (views : Array InductiveView) (indFVars : 
       return { ctor with type }
     return { indType with ctors }
 
-private structure FinalizeContext where
+structure FinalizeContext where
   elabs : Array InductiveElabStep2
   mctx : MetavarContext
   levelParams : List Name
@@ -839,7 +839,7 @@ private structure FinalizeContext where
   localInsts : LocalInstances
   replaceIndFVars : Expr → MetaM Expr
 
-private def mkInductiveDecl (vars : Array Expr) (elabs : Array InductiveElabStep1) : TermElabM FinalizeContext :=
+def mkInductiveDecl (vars : Array Expr) (elabs : Array InductiveElabStep1) : TermElabM FinalizeContext :=
   Term.withoutSavingRecAppSyntax do
   let views := elabs.map (·.view)
   let view0 := views[0]!
@@ -932,7 +932,7 @@ private def mkInductiveDecl (vars : Array Expr) (elabs : Array InductiveElabStep
             enableRealizationsForConst ctor.declName
     return res
 
-private def mkAuxConstructions (declNames : Array Name) : TermElabM Unit := do
+def mkAuxConstructions (declNames : Array Name) : TermElabM Unit := do
   let env ← getEnv
   let hasEq   := env.contains ``Eq
   let hasHEq  := env.contains ``HEq
@@ -948,7 +948,7 @@ private def mkAuxConstructions (declNames : Array Name) : TermElabM Unit := do
     if hasUnit && hasProd then mkBRecOn n
     if hasUnit && hasProd then mkBInductionOn n
 
-private def elabInductiveViews (vars : Array Expr) (elabs : Array InductiveElabStep1) : TermElabM FinalizeContext := do
+def elabInductiveViews (vars : Array Expr) (elabs : Array InductiveElabStep1) : TermElabM FinalizeContext := do
   let view0 := elabs[0]!.view
   let ref := view0.ref
   Term.withDeclName view0.declName do withRef ref do
@@ -964,7 +964,7 @@ private def elabInductiveViews (vars : Array Expr) (elabs : Array InductiveElabS
     return res
 
 /-- Ensures that there are no conflicts among or between the type and constructor names defined in `elabs`. -/
-private def checkNoInductiveNameConflicts (elabs : Array InductiveElabStep1) : TermElabM Unit := do
+def checkNoInductiveNameConflicts (elabs : Array InductiveElabStep1) : TermElabM Unit := do
   let throwErrorsAt (init cur : Syntax) (msg : MessageData) : TermElabM Unit := do
     logErrorAt init msg
     throwErrorAt cur msg
@@ -983,7 +983,7 @@ private def checkNoInductiveNameConflicts (elabs : Array InductiveElabStep1) : T
         throwErrorsAt prevRef ctor.declId m!"cannot define {declKinds} with the same name '{ctorName}'"
       uniqueNames := uniqueNames.insert ctorName (false, ctor.declId)
 
-private def applyComputedFields (indViews : Array InductiveView) : CommandElabM Unit := do
+def applyComputedFields (indViews : Array InductiveView) : CommandElabM Unit := do
   if indViews.all (·.computedFields.isEmpty) then return
 
   let mut computedFields := #[]
@@ -1010,7 +1010,7 @@ private def applyComputedFields (indViews : Array InductiveView) : CommandElabM 
   liftTermElabM do Term.withDeclName indViews[0]!.declName do
     ComputedFields.setComputedFields computedFields
 
-private def applyDerivingHandlers (views : Array InductiveView) : CommandElabM Unit := do
+def applyDerivingHandlers (views : Array InductiveView) : CommandElabM Unit := do
   let mut processed : NameSet := {}
   for view in views do
     for classView in view.derivingClasses do
@@ -1023,7 +1023,7 @@ private def applyDerivingHandlers (views : Array InductiveView) : CommandElabM U
             declNames := declNames.push view.declName
         classView.applyHandlers declNames
 
-private def elabInductiveViewsPostprocessing (views : Array InductiveView) (res : FinalizeContext) : CommandElabM Unit := do
+def elabInductiveViewsPostprocessing (views : Array InductiveView) (res : FinalizeContext) : CommandElabM Unit := do
   let view0 := views[0]!
   let ref := view0.ref
   applyComputedFields views -- NOTE: any generated code before this line is invalid

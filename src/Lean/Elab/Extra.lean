@@ -12,7 +12,7 @@ import Lean.Elab.BuiltinNotation
 namespace Lean.Elab.Term
 open Meta
 
-private def getMonadForIn (expectedType? : Option Expr) : TermElabM Expr := do
+def getMonadForIn (expectedType? : Option Expr) : TermElabM Expr := do
     match expectedType? with
     | none => throwError "invalid 'for_in%' notation, expected type is not available"
     | some expectedType =>
@@ -20,7 +20,7 @@ private def getMonadForIn (expectedType? : Option Expr) : TermElabM Expr := do
       | some (m, _) => return m
       | none => throwError "invalid 'for_in%' notation, expected type is not of the form `M α`{indentExpr expectedType}"
 
-private def throwForInFailure (forInInstance : Expr) : TermElabM Expr :=
+def throwForInFailure (forInInstance : Expr) : TermElabM Expr :=
   throwError "failed to synthesize instance for 'for_in%' notation{indentExpr forInInstance}"
 
 @[builtin_term_elab forInMacro] def elabForIn : TermElab :=  fun stx expectedType? => do
@@ -225,7 +225,7 @@ where
     return .term s info e
 
 -- Auxiliary function used at `analyze`
-private def hasCoe (fromType toType : Expr) : TermElabM Bool := do
+def hasCoe (fromType toType : Expr) : TermElabM Bool := do
   if (← getEnv).contains ``CoeT then
     withLocalDeclD `x fromType fun x => do
     match ← coerceSimple? x toType with
@@ -235,21 +235,21 @@ private def hasCoe (fromType toType : Expr) : TermElabM Bool := do
   else
     return false
 
-private structure AnalyzeResult where
+structure AnalyzeResult where
   max?            : Option Expr := none
   /-- `true` if there are two types `α` and `β` where we don't have coercions in any direction. -/
   hasUncomparable : Bool := false
   /-- `true` if there are any leaf terms with an unknown type (according to `isUnknown`). -/
   hasUnknown      : Bool := false
 
-private def isUnknown : Expr → Bool
+def isUnknown : Expr → Bool
   | .mvar ..        => true
   | .app f _        => isUnknown f
   | .letE _ _ _ b _ => isUnknown b
   | .mdata _ b      => isUnknown b
   | _               => false
 
-private def analyze (t : Tree) (expectedType? : Option Expr) : TermElabM AnalyzeResult := do
+def analyze (t : Tree) (expectedType? : Option Expr) : TermElabM AnalyzeResult := do
   let max? ←
     match expectedType? with
     | none => pure none
@@ -309,16 +309,16 @@ where
                  trace[Elab.binop] "uncomparable types: {max}, {type}"
                  modify fun s => { s with hasUncomparable := true }
 
-private def mkBinOp (lazy : Bool) (f : Expr) (lhs rhs : Expr) : TermElabM Expr := do
+def mkBinOp (lazy : Bool) (f : Expr) (lhs rhs : Expr) : TermElabM Expr := do
   let mut rhs := rhs
   if lazy then
     rhs ← mkFunUnit rhs
   elabAppArgs f #[] #[Arg.expr lhs, Arg.expr rhs] (expectedType? := none) (explicit := false) (ellipsis := false) (resultIsOutParamSupport := false)
 
-private def mkUnOp (f : Expr) (arg : Expr) : TermElabM Expr := do
+def mkUnOp (f : Expr) (arg : Expr) : TermElabM Expr := do
   elabAppArgs f #[] #[Arg.expr arg] (expectedType? := none) (explicit := false) (ellipsis := false) (resultIsOutParamSupport := false)
 
-private def toExprCore (t : Tree) : TermElabM Expr := do
+def toExprCore (t : Tree) : TermElabM Expr := do
   match t with
   | .term _ trees e =>
     modifyInfoState (fun s => { s with trees := s.trees ++ trees }); return e
@@ -360,7 +360,7 @@ private def toExprCore (t : Tree) : TermElabM Expr := do
   If the type of an argument is unknown we should not coerce it to `maxType` because it would prevent
   the default instance above from being even tried.
 -/
-private def hasHeterogeneousDefaultInstances (f : Expr) (maxType : Expr) (lhs : Bool) : MetaM Bool := do
+def hasHeterogeneousDefaultInstances (f : Expr) (maxType : Expr) (lhs : Bool) : MetaM Bool := do
   let .const fName .. := f | return false
   let .const typeName .. := maxType.getAppFn | return false
   let className := fName.getPrefix
@@ -380,7 +380,7 @@ private def hasHeterogeneousDefaultInstances (f : Expr) (maxType : Expr) (lhs : 
   For example, suppose `maxType` is `Int`, and `f` is `HPow.hPow`. Then,
   adding coercions to `maxType` only make sense if we have an instance `HPow Int Int Int`.
 -/
-private def hasHomogeneousInstance (f : Expr) (maxType : Expr) : MetaM Bool := do
+def hasHomogeneousInstance (f : Expr) (maxType : Expr) : MetaM Bool := do
   let .const fName .. := f | return false
   let className := fName.getPrefix
   try

@@ -76,7 +76,7 @@ def StructureInfo.getProjFn? (info : StructureInfo) (i : Nat) : Option Name :=
     none
 
 /-- Auxiliary state for structures defined in the current module. -/
-private structure StructureState where
+structure StructureState where
   map : PersistentHashMap Name StructureInfo := {}
   deriving Inhabited
 

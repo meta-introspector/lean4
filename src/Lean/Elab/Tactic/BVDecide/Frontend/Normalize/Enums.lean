@@ -28,7 +28,7 @@ namespace Frontend.Normalize
 
 open Lean.Meta
 
-private def getBitVecSize (domainSize : Nat) : Nat :=
+def getBitVecSize (domainSize : Nat) : Nat :=
   let bvSize := Nat.log2 domainSize
   if 2^bvSize == domainSize then
     bvSize
@@ -81,7 +81,7 @@ Create a `cond` chain in `Sort u` of the form:
 bif input = discrs 0 then values[0] else bif input = discrs 1 then values 1 else ...
 ```
 -/
-private def mkCondChain {w : Nat} (u : Level) (input : Expr) (retType : Expr)
+def mkCondChain {w : Nat} (u : Level) (input : Expr) (retType : Expr)
     (discrs : Nat → BitVec w) (values : List Expr) (acc : Expr) : MetaM Expr := do
   let instBEq ← synthInstance (mkApp (mkConst ``BEq [0]) (mkApp (mkConst ``BitVec) (toExpr w)))
   return go u input retType instBEq discrs values 0 acc
@@ -104,7 +104,7 @@ where
 /--
 Build `declName.recOn.{0} (motive := motive) value (f context[0]) (f context[1]) ...`
 -/
-private def enumCases (declName : Name) (motive : Expr) (value : Expr) (context : List α)
+def enumCases (declName : Name) (motive : Expr) (value : Expr) (context : List α)
     (f : α → MetaM Expr) : MetaM Expr := do
   let recOn := mkApp2 (mkConst (mkRecOnName declName) [0]) motive value
   List.foldlM (init := recOn) (fun acc a => mkApp acc <$> f a) context
@@ -225,7 +225,7 @@ Generate a theorem that translates `.match_x` applications on enum inductives to
 assuming that it is a supported kind of match, see `matchIsSupported` for the currently available
 variants.
 -/
-private partial def getMatchEqCondForAux (declName : Name) (kind : MatchKind) : MetaM Name := do
+partial def getMatchEqCondForAux (declName : Name) (kind : MatchKind) : MetaM Name := do
   let matchEqCondName := .str declName matchEqCondSuffix
   realizeConst declName matchEqCondName do
     let decl ←
@@ -392,7 +392,7 @@ def enumToBitVecCtor : Simp.Simproc := fun e => do
 /--
 The state used for the post processing part of `enumsPass`.
 -/
-private structure PostProcessState where
+structure PostProcessState where
   /--
   Hypotheses that bound results of `enumToBitVec` applications as appropriate.
   -/
