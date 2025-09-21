@@ -1,9 +1,9 @@
 {
   inputs.lean.url = "../..";
-  inputs.flake-utils.url = "github:numtide/flake-utils";
-  inputs.temci.url = "github:Kha/temci";
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-  inputs.disable-st.url = "https://github.com/Kha/lean4/commit/no-st.patch";
+  inputs.flake-utils.url = "github:meta-introspector/flake-utils?ref=feature/CRQ-016-nixify";
+  inputs.temci.url = "github:meta-introspector/temci?ref=feature/CRQ-016-nixify";
+  inputs.nixpkgs.url = "github:meta-introspector/nixpkgs?ref=feature/CRQ-016-nixify";
+  inputs.disable-st.url = "github:meta-introspector/lean4?ref=feature/CRQ-016-nixify";
   inputs.disable-st.flake = false;
 
   outputs = inputs: inputs.flake-utils.lib.eachDefaultSystem (system: { packages = rec {

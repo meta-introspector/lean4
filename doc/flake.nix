@@ -4,15 +4,15 @@
   inputs.lean.url = path:../.;
   inputs.flake-utils.follows = "lean/flake-utils";
   inputs.mdBook = {
-    url = "github:leanprover/mdBook";
+    url = "github:meta-introspector/mdBook?ref=feature/CRQ-016-nixify";
     flake = false;
   };
   inputs.alectryon = {
-    url = "github:Kha/alectryon/typeid";
+    url = "github:meta-introspector/alectryon?ref=feature/CRQ-016-nixify";
     flake = false;
   };
   inputs.leanInk = {
-    url = "github:leanprover/LeanInk/refs/pull/57/merge";
+    url = "github:meta-introspector/LeanInk?ref=feature/CRQ-016-nixify";
     flake = false;
   };
 

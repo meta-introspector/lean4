@@ -1,8 +1,8 @@
 {
   description = "My Lean package";
 
-  inputs.lean.url = "github:leanprover/lean4";
-  inputs.flake-utils.url = "github:numtide/flake-utils";
+  inputs.lean.url = "github:meta-introspector/lean4?ref=feature/CRQ-016-nixify";
+  inputs.flake-utils.url = "github:meta-introspector/flake-utils?ref=feature/CRQ-016-nixify";
 
   outputs = { self, lean, flake-utils }: flake-utils.lib.eachDefaultSystem (system:
     let
