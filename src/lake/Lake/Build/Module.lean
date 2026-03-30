@@ -277,6 +277,11 @@ def Module.recBuildLean (mod : Module) : FetchM (Job Unit) := do
         (← getLeanPath) mod.rootDir dynlibs plugins
         (mod.weakLeanArgs ++ mod.leanArgs) (← getLean)
       mod.clearOutputHashes
+      -- eRDFa/zkperf hook: emit DA51 shard after module build
+      if (← IO.getEnv "LAKE_ERDFA") |>.isSome then
+        let hash ← IO.FS.readBinFile mod.oleanFile >>= fun data =>
+          pure (toString (hash data.toList.length))  -- simplified hash
+        IO.eprintln s!"[erdfa] {mod.name} → {mod.oleanFile} hash={hash}"
     unless upToDate && (← getTrustHash) do
       mod.cacheOutputHashes
 
