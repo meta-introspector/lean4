@@ -277,11 +277,22 @@ def Module.recBuildLean (mod : Module) : FetchM (Job Unit) := do
         (← getLeanPath) mod.rootDir dynlibs plugins
         (mod.weakLeanArgs ++ mod.leanArgs) (← getLean)
       mod.clearOutputHashes
-      -- eRDFa/zkperf hook: emit DA51 shard after module build
+      -- eRDFa/monster-hash hook: classify module by 10-basin Monster hash
       if (← IO.getEnv "LAKE_ERDFA") |>.isSome then
-        let hash ← IO.FS.readBinFile mod.oleanFile >>= fun data =>
-          pure (toString (hash data.toList.length))  -- simplified hash
-        IO.eprintln s!"[erdfa] {mod.name} → {mod.oleanFile} hash={hash}"
+        let data ← IO.FS.readBinFile mod.oleanFile
+        -- Monster hash: 10-round rotation through basins
+        let basins := #[#[1,63,42,63], #[3,63,1,3], #[1,1,4,3], #[1,63,4,3], #[11,63,44,63],
+                        #[4,3,1,1], #[2,63,46,63], #[4,1,4,1], #[11,26,44,63], #[8,14,3,9]]
+        let eigenspaces := #["Earth","Spoke","Hub","Spoke","Earth","Hub","Earth","Clock","Spoke","Earth"]
+        -- Simple hash: sum bytes, fold through basins
+        let mut state : UInt32 := 0
+        for b in data do state := state + b.toUInt32
+        let m71 := state.toNat % 71
+        let m59 := state.toNat % 59
+        let m47 := state.toNat % 47
+        let basin := state.toNat % 10
+        let eigen := eigenspaces[basin]!
+        IO.eprintln s!"[erdfa] {mod.name} basin=B{basin}({eigen}) addr=({m71},{m59},{m47}) size={data.size}"
     unless upToDate && (← getTrustHash) do
       mod.cacheOutputHashes
 
