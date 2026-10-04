@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "kind": "mathlib-dependency-closure",
+  "layerId": "mathlib-manifold-closure",
+  "fullMathlib": false,
+  "lean": {
+    "upstreamCommit": "c0d5e8bc2c925bc2b60f18c929acf7d73ea9ecec",
+    "toolchain": "leanprover/lean4:nightly-2025-12-25"
+  },
+  "mathlib": {
+    "repository": "https://github.com/leanprover-community/mathlib4.git",
+    "commit": "add0ba94d8cba4e525b32b222f32e4137cc157d8",
+    "roots": [
+      "Mathlib.Geometry.Manifold.IsManifold.Basic"
+    ]
+  }
+}

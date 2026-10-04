@@ -6,8 +6,10 @@ Author: Leonardo de Moura, Sebastian Ullrich
 module
 
 prelude
-import Init.Core
-import Init.BinderNameHint
+public import Init.Core
+public import Init.BinderNameHint
+
+@[expose] public section
 
 universe u v w
 
@@ -23,7 +25,7 @@ instances are provided for the same type.
 instance (priority := 500) instForInOfForIn' [ForIn' m ρ α d] : ForIn m ρ α where
   forIn x b f := forIn' x b fun a _ => f a
 
-@[simp] theorem forIn'_eq_forIn [d : Membership α ρ] [ForIn' m ρ α d] {β} [Monad m] (x : ρ) (b : β)
+@[simp] theorem forIn'_eq_forIn [d : Membership α ρ] [ForIn' m ρ α d] {β} (x : ρ) (b : β)
     (f : (a : α) → a ∈ x → β → m (ForInStep β)) (g : (a : α) → β → m (ForInStep β))
     (h : ∀ a m b, f a m b = g a b) :
     forIn' x b f = forIn x b g := by
@@ -38,18 +40,15 @@ instance (priority := 500) instForInOfForIn' [ForIn' m ρ α d] : ForIn m ρ α 
   simp [h]
   rfl
 
-@[wf_preprocess] theorem forIn_eq_forIn' [d : Membership α ρ] [ForIn' m ρ α d] {β} [Monad m]
+@[wf_preprocess] theorem forIn_eq_forIn' [d : Membership α ρ] [ForIn' m ρ α d] {β}
     (x : ρ) (b : β) (f : (a : α) → β → m (ForInStep β)) :
     forIn x b f = forIn' x b (fun x h => binderNameHint x f <| binderNameHint h () <| f x) := by
   rfl
 
-@[deprecated forIn_eq_forIn' (since := "2025-04-04")]
-abbrev forIn_eq_forin' := @forIn_eq_forIn'
-
 /--
 Extracts the value from a `ForInStep`, ignoring whether it is `ForInStep.done` or `ForInStep.yield`.
 -/
-def ForInStep.value (x : ForInStep α) : α :=
+@[expose] def ForInStep.value (x : ForInStep α) : α :=
   match x with
   | ForInStep.done b => b
   | ForInStep.yield b => b
@@ -404,7 +403,7 @@ class ForM (m : Type u → Type v) (γ : Type w₁) (α : outParam (Type w₂)) 
   /--
   Runs the monadic action `f` on each element of the collection `coll`.
   -/
-  forM [Monad m] (coll : γ) (f : α → m PUnit) : m PUnit
+  forM (coll : γ) (f : α → m PUnit) : m PUnit
 
 export ForM (forM)
 

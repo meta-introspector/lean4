@@ -16,7 +16,7 @@ foreach(var ${vars})
     list(APPEND STAGE1_ARGS "-D${CMAKE_MATCH_1}=${${var}}")
   elseif("${currentHelpString}" MATCHES "No help, variable specified on the command line." OR "${currentHelpString}" STREQUAL "")
     list(APPEND CL_ARGS "-D${var}=${${var}}")
-    if("${var}" MATCHES "USE_GMP|CHECK_OLEAN_VERSION")
+    if("${var}" MATCHES "USE_GMP|CHECK_OLEAN_VERSION|LEAN_VERSION_.*|LEAN_SPECIAL_VERSION_DESC")
       # must forward options that generate incompatible .olean format
       list(APPEND STAGE0_ARGS "-D${var}=${${var}}")
     elseif("${var}" MATCHES "LLVM*|PKG_CONFIG|USE_LAKE|USE_MIMALLOC")
@@ -44,7 +44,9 @@ if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
     set(CADICAL_CXX c++)
     if (CADICAL_USE_CUSTOM_CXX)
       set(CADICAL_CXX ${CMAKE_CXX_COMPILER})
-      set(CADICAL_CXXFLAGS "${LEAN_EXTRA_CXX_FLAGS}")
+      # Use same platform flags as for Lean executables, in particular from `prepare-llvm-linux.sh`,
+      # but not Lean-specific `LEAN_EXTRA_CXX_FLAGS` such as fsanitize.
+      set(CADICAL_CXXFLAGS "${CMAKE_CXX_FLAGS}")
       set(CADICAL_LDFLAGS "-Wl,-rpath=\\$$ORIGIN/../lib")
     endif()
     find_program(CCACHE ccache)
@@ -145,6 +147,10 @@ add_custom_target(update-stage0-commit
 
 add_custom_target(test
   COMMAND $(MAKE) -C stage1 test
+  DEPENDS stage1)
+
+add_custom_target(clean-stdlib
+  COMMAND $(MAKE) -C stage1 clean-stdlib
   DEPENDS stage1)
 
 install(CODE "execute_process(COMMAND make -C stage1 install)")

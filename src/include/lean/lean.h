@@ -23,6 +23,7 @@ Author: Leonardo de Moura
 #define LEAN_USING_STD using namespace std; /* NOLINT */
 extern "C" {
 #else
+#include <stdatomic.h>
 #define  LEAN_USING_STD
 #endif
 
@@ -416,6 +417,11 @@ void free(void *);  // avoid including big `stdlib.h`
 #endif
 
 #if !defined(__STDC_VERSION_STDLIB_H__) || __STDC_VERSION_STDLIB_H__ < 202311L
+#if defined(__GLIBC__) && (defined(__GNUC__) || defined(__clang__))
+// glibc tacks on `__attribute__((nothrow))` to its declarations. In C++ this requires either
+// `__attribute__((nothrow))` to be present or `noexcept`.
+__attribute__((nothrow))
+#endif
 void free_sized(void* ptr, size_t);
 #endif
 
@@ -478,23 +484,20 @@ static inline _Atomic(int) * lean_get_rc_mt_addr(lean_object* o) {
     return (_Atomic(int)*)(&(o->m_rc));
 }
 
-LEAN_EXPORT void lean_inc_ref_cold(lean_object * o);
-LEAN_EXPORT void lean_inc_ref_n_cold(lean_object * o, unsigned n);
-
-static inline void lean_inc_ref(lean_object * o) {
-    if (LEAN_LIKELY(lean_is_st(o))) {
-        o->m_rc++;
-    } else if (o->m_rc != 0) {
-        lean_inc_ref_cold(o);
-    }
-}
-
 static inline void lean_inc_ref_n(lean_object * o, size_t n) {
     if (LEAN_LIKELY(lean_is_st(o))) {
         o->m_rc += n;
     } else if (o->m_rc != 0) {
-        lean_inc_ref_n_cold(o, n);
+#ifdef __cplusplus
+        std::atomic_fetch_sub_explicit(lean_get_rc_mt_addr(o), n, std::memory_order_relaxed);
+#else
+        atomic_fetch_sub_explicit(lean_get_rc_mt_addr(o), n, memory_order_relaxed);
+#endif
     }
+}
+
+static inline void lean_inc_ref(lean_object * o) {
+    lean_inc_ref_n(o, 1);
 }
 
 LEAN_EXPORT void lean_dec_ref_cold(lean_object * o);
@@ -712,7 +715,7 @@ static inline lean_object ** lean_closure_arg_cptr(lean_object * o) { return lea
 static inline lean_obj_res lean_alloc_closure(void * fun, unsigned arity, unsigned num_fixed) {
     assert(arity > 0);
     assert(num_fixed < arity);
-    lean_closure_object * o = (lean_closure_object*)lean_alloc_small_object(sizeof(lean_closure_object) + sizeof(void*)*num_fixed);
+    lean_closure_object * o = (lean_closure_object*)lean_alloc_object(sizeof(lean_closure_object) + sizeof(void*)*num_fixed);
     lean_set_st_header((lean_object*)o, LeanClosure, 0);
     o->m_fun = fun;
     o->m_arity = arity;
@@ -726,6 +729,14 @@ static inline b_lean_obj_res lean_closure_get(b_lean_obj_arg o, unsigned i) {
 static inline void lean_closure_set(u_lean_obj_arg o, unsigned i, lean_obj_arg a) {
     assert(i < lean_closure_num_fixed(o));
     lean_to_closure(o)->m_objs[i] = a;
+}
+static inline size_t lean_closure_byte_size(lean_object * o) {
+    return sizeof(lean_closure_object) + sizeof(void*)*lean_closure_num_fixed(o);
+}
+
+static inline size_t lean_closure_data_byte_size(lean_object * o) {
+    // Matches for closures.
+    return lean_closure_byte_size(o);
 }
 
 LEAN_EXPORT lean_object* lean_apply_1(lean_object* f, lean_object* a1);
@@ -815,6 +826,10 @@ static inline lean_obj_res lean_array_fget(b_lean_obj_arg a, b_lean_obj_arg i) {
     return lean_array_uget(a, lean_unbox(i));
 }
 
+static inline lean_obj_res lean_array_fget_borrowed(b_lean_obj_arg a, b_lean_obj_arg i) {
+    return lean_array_get_core(a, lean_unbox(i));
+}
+
 LEAN_EXPORT lean_obj_res lean_array_get_panic(lean_obj_arg def_val);
 
 static inline lean_object * lean_array_get(lean_obj_arg def_val, b_lean_obj_arg a, b_lean_obj_arg i) {
@@ -823,6 +838,21 @@ static inline lean_object * lean_array_get(lean_obj_arg def_val, b_lean_obj_arg 
         if (idx < lean_array_size(a)) {
             lean_dec(def_val);
             return lean_array_uget(a, idx);
+        }
+    }
+    /* Recall that if `i` is not a scalar, then it must be out of bounds because
+       i > LEAN_MAX_SMALL_NAT == MAX_UNSIGNED >> 1
+       but each array entry is 8 bytes in 64-bit machines and 4 in 32-bit ones.
+       In both cases, we would be out-of-memory. */
+    return lean_array_get_panic(def_val);
+}
+
+static inline lean_object * lean_array_get_borrowed(lean_obj_arg def_val, b_lean_obj_arg a, b_lean_obj_arg i) {
+    if (lean_is_scalar(i)) {
+        size_t idx = lean_unbox(i);
+        if (idx < lean_array_size(a)) {
+            lean_dec(def_val);
+            return lean_array_get_core(a, idx);
         }
     }
     /* Recall that if `i` is not a scalar, then it must be out of bounds because
@@ -1133,6 +1163,9 @@ static inline uint8_t lean_string_dec_eq(b_lean_obj_arg s1, b_lean_obj_arg s2) {
 static inline uint8_t lean_string_dec_lt(b_lean_obj_arg s1, b_lean_obj_arg s2) { return lean_string_lt(s1, s2); }
 LEAN_EXPORT uint64_t lean_string_hash(b_lean_obj_arg);
 LEAN_EXPORT lean_obj_res lean_string_of_usize(size_t);
+LEAN_EXPORT uint8_t lean_string_memcmp(b_lean_obj_arg s1, b_lean_obj_arg s2, b_lean_obj_arg lstart, b_lean_obj_arg rstart, b_lean_obj_arg len);
+LEAN_EXPORT uint64_t lean_slice_hash(b_lean_obj_arg);
+LEAN_EXPORT uint8_t lean_slice_dec_lt(b_lean_obj_arg s1, b_lean_obj_arg s2);
 
 /* Thunks */
 
@@ -1424,10 +1457,21 @@ static inline lean_obj_res lean_nat_lxor(b_lean_obj_arg a1, b_lean_obj_arg a2) {
 }
 
 LEAN_EXPORT lean_obj_res lean_nat_shiftl(b_lean_obj_arg a1, b_lean_obj_arg a2);
-LEAN_EXPORT lean_obj_res lean_nat_shiftr(b_lean_obj_arg a1, b_lean_obj_arg a2);
+LEAN_EXPORT lean_obj_res lean_nat_big_shiftr(b_lean_obj_arg a1, b_lean_obj_arg a2);
 LEAN_EXPORT lean_obj_res lean_nat_pow(b_lean_obj_arg a1, b_lean_obj_arg a2);
 LEAN_EXPORT lean_obj_res lean_nat_gcd(b_lean_obj_arg a1, b_lean_obj_arg a2);
 LEAN_EXPORT lean_obj_res lean_nat_log2(b_lean_obj_arg a);
+
+static inline lean_obj_res lean_nat_shiftr(b_lean_obj_arg a1, b_lean_obj_arg a2) {
+    if (LEAN_LIKELY(lean_is_scalar(a1) && lean_is_scalar(a2))) {
+        size_t s1 = lean_unbox(a1);
+        size_t s2 = lean_unbox(a2);
+        size_t r = (s2 < sizeof(size_t)*8) ? s1 >> s2 : 0;
+        return lean_box(r);
+    } else {
+        return lean_nat_big_shiftr(a1, a2);
+    }
+}
 
 /* Integers */
 
@@ -2018,15 +2062,17 @@ static inline uint8_t lean_int8_mul(uint8_t a1, uint8_t a2) {
 static inline uint8_t lean_int8_div(uint8_t a1, uint8_t a2) {
     int8_t lhs = (int8_t)a1;
     int8_t rhs = (int8_t)a2;
-
-    return (uint8_t)(rhs == 0 ? 0 : lhs / rhs);
+    if (rhs == 0) return 0;
+    // Widen to 16-bit to avoid x86 idiv overflow trap on INT8_MIN / -1
+    return (uint8_t)((int16_t)lhs / (int16_t)rhs);
 }
 
 static inline uint8_t lean_int8_mod(uint8_t a1, uint8_t a2) {
     int8_t lhs = (int8_t)a1;
     int8_t rhs = (int8_t)a2;
-
-    return (uint8_t)(rhs == 0 ? lhs : lhs % rhs);
+    if (rhs == 0) return (uint8_t)lhs;
+    // Widen to 16-bit to avoid x86 idiv overflow trap on INT8_MIN % -1
+    return (uint8_t)((int16_t)lhs % (int16_t)rhs);
 }
 
 static inline uint8_t lean_int8_land(uint8_t a1, uint8_t a2) {
@@ -2167,15 +2213,17 @@ static inline uint16_t lean_int16_mul(uint16_t a1, uint16_t a2) {
 static inline uint16_t lean_int16_div(uint16_t a1, uint16_t a2) {
     int16_t lhs = (int16_t)a1;
     int16_t rhs = (int16_t)a2;
-
-    return (uint16_t)(rhs == 0 ? 0 : lhs / rhs);
+    if (rhs == 0) return 0;
+    // Widen to 32-bit to avoid x86 idiv overflow trap on INT16_MIN / -1
+    return (uint16_t)((int32_t)lhs / (int32_t)rhs);
 }
 
 static inline uint16_t lean_int16_mod(uint16_t a1, uint16_t a2) {
     int16_t lhs = (int16_t)a1;
     int16_t rhs = (int16_t)a2;
-
-    return (uint16_t)(rhs == 0 ? lhs : lhs % rhs);
+    if (rhs == 0) return (uint16_t)lhs;
+    // Widen to 32-bit to avoid x86 idiv overflow trap on INT16_MIN % -1
+    return (uint16_t)((int32_t)lhs % (int32_t)rhs);
 }
 
 static inline uint16_t lean_int16_land(uint16_t a1, uint16_t a2) {
@@ -2315,15 +2363,17 @@ static inline uint32_t lean_int32_mul(uint32_t a1, uint32_t a2) {
 static inline uint32_t lean_int32_div(uint32_t a1, uint32_t a2) {
     int32_t lhs = (int32_t)a1;
     int32_t rhs = (int32_t)a2;
-
-    return (uint32_t)(rhs == 0 ? 0 : lhs / rhs);
+    if (rhs == 0) return 0;
+    // Widen to 64-bit to avoid x86 idiv overflow trap on INT32_MIN / -1
+    return (uint32_t)((int64_t)lhs / (int64_t)rhs);
 }
 
 static inline uint32_t lean_int32_mod(uint32_t a1, uint32_t a2) {
     int32_t lhs = (int32_t)a1;
     int32_t rhs = (int32_t)a2;
-
-    return (uint32_t)(rhs == 0 ? lhs : lhs % rhs);
+    if (rhs == 0) return (uint32_t)lhs;
+    // Widen to 64-bit to avoid x86 idiv overflow trap on INT32_MIN % -1
+    return (uint32_t)((int64_t)lhs % (int64_t)rhs);
 }
 
 static inline uint32_t lean_int32_land(uint32_t a1, uint32_t a2) {
@@ -2463,15 +2513,19 @@ static inline uint64_t lean_int64_mul(uint64_t a1, uint64_t a2) {
 static inline uint64_t lean_int64_div(uint64_t a1, uint64_t a2) {
     int64_t lhs = (int64_t)a1;
     int64_t rhs = (int64_t)a2;
-
-    return (uint64_t)(rhs == 0 ? 0 : lhs / rhs);
+    if (rhs == 0) return 0;
+    // Check for overflow: INT64_MIN / -1 would trap on x86 idiv
+    if (lhs == INT64_MIN && rhs == -1) return (uint64_t)INT64_MIN;
+    return (uint64_t)(lhs / rhs);
 }
 
 static inline uint64_t lean_int64_mod(uint64_t a1, uint64_t a2) {
     int64_t lhs = (int64_t)a1;
     int64_t rhs = (int64_t)a2;
-
-    return (uint64_t)(rhs == 0 ? lhs : lhs % rhs);
+    if (rhs == 0) return (uint64_t)lhs;
+    // Check for overflow: INT64_MIN % -1 would trap on x86 idiv
+    if (lhs == INT64_MIN && rhs == -1) return 0;
+    return (uint64_t)(lhs % rhs);
 }
 
 static inline uint64_t lean_int64_land(uint64_t a1, uint64_t a2) {
@@ -2794,10 +2848,17 @@ LEAN_EXPORT lean_obj_res lean_decode_io_error(int errnum, b_lean_obj_arg fname);
 LEAN_EXPORT lean_obj_res lean_decode_uv_error(int errnum, b_lean_obj_arg fname);
 
 static inline lean_obj_res lean_io_mk_world() { return lean_box(0); }
+
+static inline lean_obj_res lean_void_mk(lean_obj_arg a) {
+    lean_dec(a);
+    return lean_box(0);
+}
+
 static inline bool lean_io_result_is_ok(b_lean_obj_arg r) { return lean_ptr_tag(r) == 0; }
 static inline bool lean_io_result_is_error(b_lean_obj_arg r) { return lean_ptr_tag(r) == 1; }
 static inline b_lean_obj_res lean_io_result_get_value(b_lean_obj_arg r) { assert(lean_io_result_is_ok(r)); return lean_ctor_get(r, 0); }
 static inline b_lean_obj_res lean_io_result_get_error(b_lean_obj_arg r) { assert(lean_io_result_is_error(r)); return lean_ctor_get(r, 0); }
+
 static inline lean_obj_res lean_io_result_take_value(lean_obj_arg r) {
     assert(lean_io_result_is_ok(r));
     lean_object* v = lean_ctor_get(r, 0);
@@ -2805,18 +2866,17 @@ static inline lean_obj_res lean_io_result_take_value(lean_obj_arg r) {
     lean_dec(r);
     return v;
 }
+
 LEAN_EXPORT void lean_io_result_show_error(b_lean_obj_arg r);
 LEAN_EXPORT void lean_io_mark_end_initialization(void);
 static inline lean_obj_res lean_io_result_mk_ok(lean_obj_arg a) {
-    lean_object * r = lean_alloc_ctor(0, 2, 0);
+    lean_object * r = lean_alloc_ctor(0, 1, 0);
     lean_ctor_set(r, 0, a);
-    lean_ctor_set(r, 1, lean_box(0));
     return r;
 }
 static inline lean_obj_res lean_io_result_mk_error(lean_obj_arg e) {
-    lean_object * r = lean_alloc_ctor(1, 2, 0);
+    lean_object * r = lean_alloc_ctor(1, 1, 0);
     lean_ctor_set(r, 0, e);
-    lean_ctor_set(r, 1, lean_box(0));
     return r;
 }
 
@@ -2848,11 +2908,11 @@ LEAN_EXPORT lean_obj_res lean_mk_io_user_error(lean_obj_arg str);
 
 
 /* ST Ref primitives */
-LEAN_EXPORT lean_obj_res lean_st_mk_ref(lean_obj_arg, lean_obj_arg);
-LEAN_EXPORT lean_obj_res lean_st_ref_get(b_lean_obj_arg, lean_obj_arg);
-LEAN_EXPORT lean_obj_res lean_st_ref_set(b_lean_obj_arg, lean_obj_arg, lean_obj_arg);
-LEAN_EXPORT lean_obj_res lean_st_ref_reset(b_lean_obj_arg, lean_obj_arg);
-LEAN_EXPORT lean_obj_res lean_st_ref_swap(b_lean_obj_arg, lean_obj_arg, lean_obj_arg);
+LEAN_EXPORT lean_obj_res lean_st_mk_ref(lean_obj_arg);
+LEAN_EXPORT lean_obj_res lean_st_ref_get(b_lean_obj_arg);
+LEAN_EXPORT lean_obj_res lean_st_ref_set(b_lean_obj_arg, lean_obj_arg);
+LEAN_EXPORT lean_obj_res lean_st_ref_reset(b_lean_obj_arg);
+LEAN_EXPORT lean_obj_res lean_st_ref_swap(b_lean_obj_arg, lean_obj_arg);
 
 /* pointer address unsafe primitive  */
 static inline size_t lean_ptr_addr(b_lean_obj_arg a) { return (size_t)a; }

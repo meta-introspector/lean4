@@ -11,6 +11,7 @@ Author: Leonardo de Moura
 #include <lean/lean.h>
 #include "runtime/hash.h"
 #include "runtime/compact.h"
+#include "runtime/exception.h"
 #include "util/alloc.h"
 
 #ifndef LEAN_WINDOWS
@@ -289,7 +290,12 @@ void object_compactor::insert_mpz(object * o) {
     size_t data_sz = sizeof(mpn_digit) * to_mpz(o)->m_value.m_size;
     size_t sz      = sizeof(mpz_object) + data_sz;
     mpz_object * new_o = (mpz_object *)alloc(sz);
-    memcpy(new_o, to_mpz(o), sizeof(mpz_object));
+    // Manually copy the `mpz_object` to ensure `mpz` struct padding is left as
+    // zero as prepared by `object_compactor::alloc`. `memcpy` would copy the
+    // padding and lead to non-deterministic outputs.
+    new_o->m_header = to_mpz(o)->m_header;
+    new_o->m_value.m_sign = to_mpz(o)->m_value.m_sign;
+    new_o->m_value.m_size = to_mpz(o)->m_value.m_size;
     lean_set_non_heap_header((lean_object*)new_o, sz, LeanMPZ, 0);
     void * data = reinterpret_cast<char*>(new_o) + sizeof(mpz_object);
     memcpy(data, to_mpz(o)->m_value.m_digits, data_sz);
@@ -357,7 +363,7 @@ void object_compactor::operator()(object * o) {
             g_tag_counters[lean_ptr_tag(curr)]++;
 #endif
             switch (lean_ptr_tag(curr)) {
-            case LeanClosure:         lean_internal_panic("closures cannot be compacted. One possible cause of this error is trying to store a function in a persistent environment extension.");
+            case LeanClosure:         throw exception("closures cannot be compacted. One possible cause of this error is trying to store a function in a persistent environment extension.");
             case LeanArray:           r = insert_array(curr); break;
             case LeanScalarArray:     insert_sarray(curr); break;
             case LeanString:          insert_string(curr); break;
@@ -366,7 +372,7 @@ void object_compactor::operator()(object * o) {
             case LeanTask:            r = insert_task(curr); break;
             case LeanPromise:         r = insert_promise(curr); break;
             case LeanRef:             r = insert_ref(curr); break;
-            case LeanExternal:        lean_internal_panic("external objects cannot be compacted");
+            case LeanExternal:        throw exception("external objects cannot be compacted");
             case LeanReserved:        lean_unreachable();
             default:                  r = insert_constructor(curr); break;
             }
@@ -379,6 +385,7 @@ void object_compactor::operator()(object * o) {
 }
 
 compacted_region::compacted_region(size_t sz, void * data, void * base_addr, bool is_mmap, std::function<void()> free_data):
+    m_size(sz),
     m_base_addr(base_addr),
     m_is_mmap(is_mmap),
     m_free_data(free_data),
@@ -395,7 +402,7 @@ compacted_region::~compacted_region() {
 
 inline object * compacted_region::fix_object_ptr(object * o) {
     if (lean_is_scalar(o)) return o;
-    return reinterpret_cast<object*>(static_cast<char*>(m_begin) + (reinterpret_cast<size_t>(o) - reinterpret_cast<size_t>(m_base_addr)));
+    return reinterpret_cast<object*>(static_cast<char*>(m_begin) - reinterpret_cast<char*>(m_base_addr) + reinterpret_cast<ptrdiff_t>(o));
 }
 
 inline void compacted_region::move(size_t d) {
@@ -500,6 +507,10 @@ object * compacted_region::read() {
 
 extern "C" LEAN_EXPORT uint8 lean_compacted_region_is_memory_mapped(usize region) {
     return reinterpret_cast<compacted_region *>(region)->is_memory_mapped();
+}
+
+extern "C" LEAN_EXPORT usize lean_compacted_region_size(usize region) {
+    return reinterpret_cast<compacted_region *>(region)->size();
 }
 
 extern "C" LEAN_EXPORT obj_res lean_compacted_region_free(usize region, object *) {

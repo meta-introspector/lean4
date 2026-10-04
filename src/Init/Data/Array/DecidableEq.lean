@@ -6,10 +6,11 @@ Authors: Leonardo de Moura
 module
 
 prelude
-import Init.Data.Array.Basic
-import Init.Data.BEq
-import Init.Data.List.Nat.BEq
-import Init.ByCases
+import all Init.Data.Array.Basic
+public import Init.Data.BEq
+public import Init.Data.List.Nat.BEq
+
+public section
 
 set_option linter.listVariables true -- Enforce naming conventions for `List`/`Array`/`Vector` variables.
 set_option linter.indexVariables true -- Enforce naming conventions for index variables.
@@ -23,7 +24,7 @@ private theorem rel_of_isEqvAux
   induction i with
   | zero => contradiction
   | succ i ih =>
-    simp only [Array.isEqvAux, Bool.and_eq_true, decide_eq_true_eq] at heqv
+    simp only [Array.isEqvAux, Bool.and_eq_true] at heqv
     by_cases hj' : j < i
     next =>
       exact ih _ heqv.right hj'
@@ -68,8 +69,8 @@ theorem isEqv_eq_decide (xs ys : Array α) (r) :
       Bool.not_eq_true]
     simpa [isEqv_iff_rel] using h'
 
-@[simp] theorem isEqv_toList [BEq α] (xs ys : Array α) : (xs.toList.isEqv ys.toList r) = (xs.isEqv ys r) := by
-  simp [isEqv_eq_decide, List.isEqv_eq_decide]
+@[simp, grind =] theorem isEqv_toList [BEq α] (xs ys : Array α) : (xs.toList.isEqv ys.toList r) = (xs.isEqv ys r) := by
+  simp [isEqv_eq_decide, List.isEqv_eq_decide, Array.size]
 
 theorem eq_of_isEqv [DecidableEq α] (xs ys : Array α) (h : Array.isEqv xs ys (fun x y => x = y)) : xs = ys := by
   have ⟨h, h'⟩ := rel_of_isEqv h
@@ -88,28 +89,58 @@ theorem isEqv_self_beq [BEq α] [ReflBEq α] (xs : Array α) : Array.isEqv xs xs
 theorem isEqv_self [DecidableEq α] (xs : Array α) : Array.isEqv xs xs (· = ·) = true := by
   simp [isEqv, isEqvAux_self]
 
-instance [DecidableEq α] : DecidableEq (Array α) :=
-  fun xs ys =>
-    match h:isEqv xs ys (fun a b => a = b) with
-    | true  => isTrue (eq_of_isEqv xs ys h)
-    | false => isFalse fun h' => by subst h'; rw [isEqv_self] at h; contradiction
+def instDecidableEqImpl [DecidableEq α] : DecidableEq (Array α) := fun xs ys =>
+  match h:isEqv xs ys (fun a b => a = b) with
+  | true  => isTrue (eq_of_isEqv xs ys h)
+  | false => isFalse (by subst ·; rw [isEqv_self] at h; contradiction)
+
+instance instDecidableEq [DecidableEq α] : DecidableEq (Array α) := fun xs ys =>
+  match xs with
+  | ⟨[]⟩ =>
+    match ys with
+    | ⟨[]⟩ => isTrue rfl
+    | ⟨_ :: _⟩ => isFalse (fun h => Array.noConfusion rfl (heq_of_eq h) (fun h => List.noConfusion rfl h))
+  | ⟨a :: as⟩ =>
+    match ys with
+    | ⟨[]⟩ => isFalse (fun h => Array.noConfusion rfl (heq_of_eq h) (fun h => List.noConfusion rfl h))
+    | ⟨b :: bs⟩ => instDecidableEqImpl ⟨a :: as⟩ ⟨b :: bs⟩
+
+@[csimp]
+theorem instDecidableEq_csimp : @instDecidableEq = @instDecidableEqImpl :=
+  Subsingleton.allEq _ _
+
+/--
+Equality with `#[]` is decidable even if the underlying type does not have decidable equality.
+-/
+instance instDecidableEqEmp (xs : Array α) : Decidable (xs = #[]) :=
+  match xs with
+  | ⟨[]⟩ => isTrue rfl
+  | ⟨_ :: _⟩ => isFalse (fun h => Array.noConfusion rfl (heq_of_eq h) (fun h => List.noConfusion rfl h))
+
+/--
+Equality with `#[]` is decidable even if the underlying type does not have decidable equality.
+-/
+instance instDecidableEmpEq (ys : Array α) : Decidable (#[] = ys) :=
+  match ys with
+  | ⟨[]⟩ => isTrue rfl
+  | ⟨_ :: _⟩ => isFalse (fun h => Array.noConfusion rfl (heq_of_eq h) (fun h => List.noConfusion rfl h))
 
 theorem beq_eq_decide [BEq α] (xs ys : Array α) :
     (xs == ys) = if h : xs.size = ys.size then
       decide (∀ (i : Nat) (h' : i < xs.size), xs[i] == ys[i]'(h ▸ h')) else false := by
   simp [BEq.beq, isEqv_eq_decide]
 
-@[simp] theorem beq_toList [BEq α] (xs ys : Array α) : (xs.toList == ys.toList) = (xs == ys) := by
-  simp [beq_eq_decide, List.beq_eq_decide]
+@[simp, grind =] theorem beq_toList [BEq α] (xs ys : Array α) : (xs.toList == ys.toList) = (xs == ys) := by
+  simp [beq_eq_decide, List.beq_eq_decide, Array.size]
 
 end Array
 
 namespace List
 
-@[simp] theorem isEqv_toArray [BEq α] (as bs : List α) : (as.toArray.isEqv bs.toArray r) = (as.isEqv bs r) := by
+@[simp, grind =] theorem isEqv_toArray [BEq α] (as bs : List α) : (as.toArray.isEqv bs.toArray r) = (as.isEqv bs r) := by
   simp [isEqv_eq_decide, Array.isEqv_eq_decide]
 
-@[simp] theorem beq_toArray [BEq α] (as bs : List α) : (as.toArray == bs.toArray) = (as == bs) := by
+@[simp, grind =] theorem beq_toArray [BEq α] (as bs : List α) : (as.toArray == bs.toArray) = (as == bs) := by
   simp [beq_eq_decide, Array.beq_eq_decide]
 
 end List

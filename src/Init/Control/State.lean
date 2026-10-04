@@ -8,9 +8,9 @@ The State monad transformer.
 module
 
 prelude
-import Init.Control.Basic
-import Init.Control.Id
-import Init.Control.Except
+public import Init.Control.Except
+
+public section
 
 set_option linter.missingDocs true
 
@@ -22,14 +22,20 @@ Adds a mutable state of type `σ` to a monad.
 Actions in the resulting monad are functions that take an initial state and return, in `m`, a tuple
 of a value and a state.
 -/
-def StateT (σ : Type u) (m : Type u → Type v) (α : Type u) : Type (max u v) :=
+@[expose] def StateT (σ : Type u) (m : Type u → Type v) (α : Type u) : Type (max u v) :=
   σ → m (α × σ)
+
+/--
+Interpret `σ → m (α × σ)` as an element of `StateT σ m α`.
+-/
+@[always_inline, inline, expose]
+def StateT.mk {σ : Type u} {m : Type u → Type v} {α : Type u} (x : σ → m (α × σ)) : StateT σ m α := x
 
 /--
 Executes an action from a monad with added state in the underlying monad `m`. Given an initial
 state, it returns a value paired with the final state.
 -/
-@[always_inline, inline]
+@[always_inline, inline, expose]
 def StateT.run {σ : Type u} {m : Type u → Type v} {α : Type u} (x : StateT σ m α) (s : σ) : m (α × σ) :=
   x s
 
@@ -37,7 +43,7 @@ def StateT.run {σ : Type u} {m : Type u → Type v} {α : Type u} (x : StateT �
 Executes an action from a monad with added state in the underlying monad `m`. Given an initial
 state, it returns a value, discarding the final state.
 -/
-@[always_inline, inline]
+@[always_inline, inline, expose]
 def StateT.run' {σ : Type u} {m : Type u → Type v} [Functor m] {α : Type u} (x : StateT σ m α) (s : σ) : m α :=
   (·.1) <$> x s
 
@@ -47,7 +53,7 @@ A tuple-based state monad.
 Actions in `StateM σ` are functions that take an initial state and return a value paired with a
 final state.
 -/
-@[reducible]
+@[expose, reducible]
 def StateM (σ α : Type u) : Type u := StateT σ Id α
 
 instance {σ α} [Subsingleton σ] [Subsingleton α] : Subsingleton (StateM σ α) where
@@ -66,21 +72,21 @@ variable [Monad m] {α β : Type u}
 /--
 Returns the given value without modifying the state. Typically used via `Pure.pure`.
 -/
-@[always_inline, inline]
+@[always_inline, inline, expose]
 protected def pure (a : α) : StateT σ m α :=
   fun s => pure (a, s)
 
 /--
 Sequences two actions. Typically used via the `>>=` operator.
 -/
-@[always_inline, inline]
+@[always_inline, inline, expose]
 protected def bind (x : StateT σ m α) (f : α → StateT σ m β) : StateT σ m β :=
   fun s => do let (a, s) ← x s; f a s
 
 /--
 Modifies the value returned by a computation. Typically used via the `<$>` operator.
 -/
-@[always_inline, inline]
+@[always_inline, inline, expose]
 protected def map (f : α → β) (x : StateT σ m α) : StateT σ m β :=
   fun s => do let (a, s) ← x s; pure (f a, s)
 
@@ -114,14 +120,14 @@ Retrieves the current value of the monad's mutable state.
 
 This increments the reference count of the state, which may inhibit in-place updates.
 -/
-@[always_inline, inline]
+@[always_inline, inline, expose]
 protected def get : StateT σ m σ :=
   fun s => pure (s, s)
 
 /--
 Replaces the mutable state with a new value.
 -/
-@[always_inline, inline]
+@[always_inline, inline, expose]
 protected def set : σ → StateT σ m PUnit :=
   fun s' _ => pure (⟨⟩, s')
 
@@ -133,7 +139,7 @@ It is equivalent to `do let (a, s) := f (← StateT.get); StateT.set s; pure a`.
 `StateT.modifyGet` may lead to better performance because it doesn't add a new reference to the
 state value, and additional references can inhibit in-place updates of data.
 -/
-@[always_inline, inline]
+@[always_inline, inline, expose]
 protected def modifyGet (f : σ → α × σ) : StateT σ m α :=
   fun s => pure (f s)
 
@@ -143,7 +149,7 @@ Runs an action from the underlying monad in the monad with state. The state is n
 This function is typically implicitly accessed via a `MonadLiftT` instance as part of [automatic
 lifting](lean-manual://section/monad-lifting).
 -/
-@[always_inline, inline]
+@[always_inline, inline, expose]
 protected def lift {α : Type u} (t : m α) : StateT σ m α :=
   fun s => do let a ← t; pure (a, s)
 
@@ -198,3 +204,7 @@ instance StateT.tryFinally {m : Type u → Type v} {σ : Type u} [MonadFinally m
       | some (a, s') => h (some a) s'
       | none         => h none s
     pure ((a, b), s'')
+
+instance [Monad m] [MonadAttach m] : MonadAttach (StateT σ m) where
+  CanReturn x a := Exists fun s => Exists fun s' => MonadAttach.CanReturn (x.run s) (a, s')
+  attach x := fun s => (fun ⟨⟨a, s'⟩, h⟩ => ⟨⟨a, s, s', h⟩, s'⟩) <$> MonadAttach.attach (x.run s)

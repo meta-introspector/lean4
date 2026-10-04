@@ -1,0 +1,87 @@
+name: Build Batteries (linux_32)
+# Builds Batteries with the native i386 toolchain produced by the "Linux 32bit"
+# CI job, yielding 32-bit .olean/.ir trees the wasm playground can import
+# (pointer-width compatible with wasm32; same commit → same githash, which
+# CHECK_OLEAN_VERSION requires). Batteries has no package dependencies, so a
+# plain `lake build` suffices.
+#
+# Dispatch manually with the run id of a green CI run on this branch.
+on:
+  workflow_dispatch:
+    inputs:
+      toolchain_run_id:
+        description: 'CI run id to pull the build-Linux 32bit artifact from'
+        required: true
+      batteries_rev:
+        description: 'leanprover-community/batteries rev to build'
+        required: true
+        # nightly-testing-2025-12-25: pinned to lean4 nightly cut the same day
+        # as this fork's upstream base (c0d5e8bc2c), so stdlib API drift is ~nil.
+        default: '2b34cb1ec906fc05cd8e0993588896c99917f33b'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install i386 runtime
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          # gcc-multilib: lake also compiles the emitted .c with -m32 (we ship
+          # only .olean/.ir, but letting the standard build complete validates
+          # the package and needs just the 32-bit libc headers).
+          sudo apt-get install -y libc6:i386 libstdc++6:i386 zlib1g:i386 libuv1:i386 zstd gcc-multilib g++-multilib
+          # 4.33 toolchains link libssl dynamically (4.28 did not)
+          sudo apt-get install -y libssl3t64:i386 || sudo apt-get install -y libssl3:i386
+      - name: Download toolchain artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download ${{ inputs.toolchain_run_id }} -R ${{ github.repository }} -n "build-Linux 32bit" -D artifact
+          ls -la artifact
+      - name: Extract toolchain
+        run: |
+          tar --use-compress-program=unzstd -xf artifact/*.tar.zst
+          TOOLCHAIN=$(echo lean-*-linux_32)
+          echo "TOOLCHAIN=$PWD/$TOOLCHAIN" >> "$GITHUB_ENV"
+          ls -la "$TOOLCHAIN/bin"
+          file "$TOOLCHAIN"/bin/* 2>/dev/null | head
+          ldd "$TOOLCHAIN/bin/lean" 2>&1 | head -15
+          # lean --version exits non-zero here despite printing (exit 232 on
+          # both prior runs) — capture instead of dying so we can see why.
+          set +e
+          "$TOOLCHAIN/bin/lean" --version
+          echo "lean --version exit code: $?"
+          set -e
+          # The triple in --version is CMake's host triple; the ELF class is
+          # the ground truth — everything depends on 32-bit oleans.
+          if ! file "$TOOLCHAIN/bin/lean" | grep -q 'ELF 32-bit'; then
+            echo "::error::toolchain lean is not a 32-bit binary — its oleans would be 64-bit and useless for wasm32"
+            exit 1
+          fi
+      - name: Checkout Batteries
+        run: |
+          git clone https://github.com/leanprover-community/batteries batteries
+          git -C batteries checkout ${{ inputs.batteries_rev }}
+      - name: Build Batteries
+        run: |
+          export PATH="$TOOLCHAIN/bin:$PATH"
+          cd batteries
+          # The library target only: the default set also links the runLinter
+          # executable, which we don't ship and which fails to link 32-bit.
+          lake build Batteries
+      - name: Package oleans
+        run: |
+          cd batteries/.lake/build/lib
+          # Lake nests oleans under lib/lean/ in recent versions, flat before.
+          [ -d lean ] && cd lean
+          # Ship what the playground loads: .olean plus .ir/.ir.sig — the runtime
+          # bodies live in .ir (the olean's decl map holds .extern stubs), and
+          # the reader only picks up an .ir when its .ir.sig sits beside it.
+          find . \( -name '*.olean' -o -name '*.ir' -o -name '*.ir.sig' \) | tar -cf - -T - | zstd -19 -T0 -o "$GITHUB_WORKSPACE/batteries-oleans-linux_32.tar.zst"
+          ls -la "$GITHUB_WORKSPACE/batteries-oleans-linux_32.tar.zst"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: batteries-oleans-linux_32
+          path: batteries-oleans-linux_32.tar.zst

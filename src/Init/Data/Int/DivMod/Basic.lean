@@ -6,7 +6,11 @@ Authors: Jeremy Avigad, Mario Carneiro
 module
 
 prelude
-import Init.Data.Int.Basic
+public import Init.Data.Int.Basic
+
+public section
+
+@[expose] section
 
 open Nat
 
@@ -44,7 +48,7 @@ Integer division that uses the E-rounding convention. Usually accessed via the `
 Division by zero is defined to be zero, rather than an error.
 
 In the E-rounding convention (Euclidean division), `Int.emod x y` satisfies `0 ≤ Int.emod x y < Int.natAbs y`
-for `y ≠ 0` and `Int.ediv` is the unique function satisfying `Int.emod x y + (Int.edivx y) * y = x`
+for `y ≠ 0` and `Int.ediv` is the unique function satisfying `Int.emod x y + (Int.ediv x y) * y = x`
 for `y ≠ 0`.
 
 This means that `Int.ediv x y` is `⌊x / y⌋` when `y > 0` and `⌈x / y⌉` when `y < 0`.
@@ -76,7 +80,7 @@ def ediv : (@& Int) → (@& Int) → Int
 Integer modulus that uses the E-rounding convention. Usually accessed via the `%` operator.
 
 In the E-rounding convention (Euclidean division), `Int.emod x y` satisfies `0 ≤ Int.emod x y < Int.natAbs y`
-for `y ≠ 0` and `Int.ediv` is the unique function satisfying `Int.emod x y + (Int.edivx y) * y = x`
+for `y ≠ 0` and `Int.ediv` is the unique function satisfying `Int.emod x y + (Int.ediv x y) * y = x`
 for `y ≠ 0`.
 
 This function is overridden by the compiler with an efficient implementation. This definition is
@@ -113,9 +117,6 @@ instance : Mod Int where
   mod := Int.emod
 
 @[simp, norm_cast] theorem natCast_ediv (m n : Nat) : (↑(m / n) : Int) = ↑m / ↑n := rfl
-
-@[deprecated natCast_ediv (since := "2025-04-17")]
-theorem ofNat_ediv (m n : Nat) : (↑(m / n) : Int) = ↑m / ↑n := natCast_ediv m n
 
 theorem ofNat_ediv_ofNat {a b : Nat} : (↑a / ↑b : Int) = (a / b : Nat) := rfl
 @[norm_cast]

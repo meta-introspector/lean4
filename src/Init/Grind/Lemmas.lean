@@ -4,14 +4,11 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Leonardo de Moura
 -/
 module
-
 prelude
-import Init.Core
-import Init.SimpLemmas
-import Init.Classical
-import Init.ByCases
-import Init.Grind.Util
-
+public import Init.ByCases
+public import Init.Grind.Util
+public import Init.Grind.Ring.Basic
+public section
 namespace Lean.Grind
 
 theorem rfl_true : true = true :=
@@ -76,6 +73,9 @@ theorem eq_eq_of_eq_true_right {a b : Prop} (h : b = True) : (a = b) = a := by s
 theorem eq_congr  {α : Sort u} {a₁ b₁ a₂ b₂ : α} (h₁ : a₁ = a₂) (h₂ : b₁ = b₂) : (a₁ = b₁) = (a₂ = b₂) := by simp [*]
 theorem eq_congr' {α : Sort u} {a₁ b₁ a₂ b₂ : α} (h₁ : a₁ = b₂) (h₂ : b₁ = a₂) : (a₁ = b₁) = (a₂ = b₂) := by rw [h₁, h₂, Eq.comm (a := a₂)]
 
+theorem heq_congr  {α : Sort u} {β : Sort u} {a₁ b₁ : α} {a₂ b₂ : β} (h₁ : a₁ ≍ a₂) (h₂ : b₁ ≍ b₂) : (a₁ = b₁) = (a₂ = b₂) := by cases h₁; cases h₂; rfl
+theorem heq_congr' {α : Sort u} {β : Sort u} {a₁ b₁ : α} {a₂ b₂ : β} (h₁ : a₁ ≍ b₂) (h₂ : b₁ ≍ a₂) : (a₁ = b₁) = (a₂ = b₂) := by cases h₁; cases h₂; rw [@Eq.comm _ a₁]
+
 /-! Ne -/
 
 theorem ne_of_ne_of_eq_left {α : Sort u} {a b c : α} (h₁ : a = b) (h₂ : b ≠ c) : a ≠ c := by simp [*]
@@ -88,6 +88,12 @@ theorem beq_eq_true_of_eq {α : Type u} {_ : BEq α} {_ : LawfulBEq α} {a b : �
 
 theorem beq_eq_false_of_diseq {α : Type u} {_ : BEq α} {_ : LawfulBEq α} {a b : α} (h : ¬ a = b) : (a == b) = false := by
   simp[*]
+
+theorem eq_of_beq_eq_true {α : Type u} {_ : BEq α} {_ : LawfulBEq α} {a b : α} (h : (a == b) = true) : a = b := by
+  simp [beq_iff_eq.mp h]
+
+theorem ne_of_beq_eq_false {α : Type u} {_ : BEq α} {_ : LawfulBEq α} {a b : α} (h : (a == b) = false) : (a = b) = False := by
+  simp [beq_eq_false_iff_ne.mp h]
 
 /-! Bool.and -/
 
@@ -123,6 +129,11 @@ theorem Bool.eq_true_of_not_eq_false' {a : Bool} (h : ¬ a = false) : a = true :
 theorem Bool.false_of_not_eq_self {a : Bool} (h : (!a) = a) : False := by
   by_cases a <;> simp_all
 
+theorem Bool.ne_of_eq_true_of_eq_false {a b : Bool} (h₁ : a = true) (h₂ : b = false) : (a = b) = False := by
+  cases a <;> cases b <;> simp_all
+theorem Bool.ne_of_eq_false_of_eq_true {a b : Bool} (h₁ : a = false) (h₂ : b = true) : (a = b) = False := by
+  cases a <;> cases b <;> simp_all
+
 /- The following two helper theorems are used to case-split `a = b` representing `iff`. -/
 theorem of_eq_eq_true {a b : Prop} (h : (a = b) = True) : (a ∧ b) ∨ (¬ a ∧ ¬ b) := by
   by_cases a <;> by_cases b <;> simp_all
@@ -147,17 +158,17 @@ theorem dite_cond_eq_false' {α : Sort u} {c : Prop} {_ : Decidable c} {a : c �
 
 theorem eqRec_heq.{u_1, u_2} {α : Sort u_2} {a : α}
         {motive : (x : α) → a = x → Sort u_1} (v : motive a (Eq.refl a)) {b : α} (h : a = b)
-        : HEq (@Eq.rec α a motive v b h) v := by
+        : @Eq.rec α a motive v b h ≍ v := by
  subst h; rfl
 
 theorem eqRecOn_heq.{u_1, u_2} {α : Sort u_2} {a : α}
         {motive : (x : α) → a = x → Sort u_1} {b : α} (h : a = b) (v : motive a (Eq.refl a))
-        : HEq (@Eq.recOn α a motive b h v) v := by
+        : @Eq.recOn α a motive b h v ≍ v := by
  subst h; rfl
 
 theorem eqNDRec_heq.{u_1, u_2} {α : Sort u_2} {a : α}
         {motive : α → Sort u_1} (v : motive a) {b : α} (h : a = b)
-        : HEq (@Eq.ndrec α a motive v b h) v := by
+        : @Eq.ndrec α a motive v b h ≍ v := by
  subst h; rfl
 
 /-! decide -/
@@ -171,5 +182,24 @@ theorem decide_eq_false {p : Prop} {_ : Decidable p} : p = False → decide p = 
 
 theorem of_lookahead (p : Prop) (h : (¬ p) → False) : p = True := by
   simp at h; simp [h]
+
+/-! Nat propagators -/
+
+theorem Nat.and_congr {a b : Nat} {k₁ k₂ k : Nat} (h₁ : a = k₁) (h₂ : b = k₂) : k == k₁ &&& k₂ → a &&& b = k := by simp_all
+theorem Nat.xor_congr {a b : Nat} {k₁ k₂ k : Nat} (h₁ : a = k₁) (h₂ : b = k₂) : k == k₁ ^^^ k₂ → a ^^^ b = k := by simp_all
+theorem Nat.or_congr {a b : Nat} {k₁ k₂ k : Nat} (h₁ : a = k₁) (h₂ : b = k₂) : k == k₁ ||| k₂ → a ||| b = k := by simp_all
+theorem Nat.shiftLeft_congr {a b : Nat} {k₁ k₂ k : Nat} (h₁ : a = k₁) (h₂ : b = k₂) : k == k₁ <<< k₂ → a <<< b = k := by simp_all
+theorem Nat.shiftRight_congr {a b : Nat} {k₁ k₂ k : Nat} (h₁ : a = k₁) (h₂ : b = k₂) : k == k₁ >>> k₂ → a >>> b = k := by simp_all
+
+/-! Semiring propagators -/
+
+theorem Semiring.one_mul_congr {α} [Semiring α] {a b : α} (h : a = 1) : a*b = b := by
+  simp [h, Semiring.one_mul]
+theorem Semiring.zero_mul_congr {α} [Semiring α] {a b : α} (h : a = 0) : a*b = 0 := by
+  simp [h, Semiring.zero_mul]
+theorem Semiring.mul_one_congr {α} [Semiring α] {a b : α} (h : b = 1) : a*b = a := by
+  simp [h, Semiring.mul_one]
+theorem Semiring.mul_zero_congr {α} [Semiring α] {a b : α} (h : b = 0) : a*b = 0 := by
+  simp [h, Semiring.mul_zero]
 
 end Lean.Grind

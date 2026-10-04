@@ -19,11 +19,11 @@ example : 2^257 = 2*2^256 :=
 /--
 warning: exponent 2008 exceeds the threshold 256, exponentiation operation was not evaluated, use `set_option exponentiation.threshold <num>` to set a new threshold
 ---
-info: k : Nat
+trace: k : Nat
 h : k = 2008 ^ 2 + 2 ^ 2008
 ⊢ ((4032064 + 2 ^ 2008) ^ 2 + 2 ^ (4032064 + 2 ^ 2008)) % 10 = 6
 ---
-warning: declaration uses 'sorry'
+warning: declaration uses `sorry`
 ---
 error: (kernel) deep recursion detected
 -/
@@ -34,11 +34,11 @@ example (k : Nat) (h : k = 2008^2 + 2^2008) : (k^2 + 2^k)%10 = 6 := by
   sorry
 
 /--
-info: k : Nat
+trace: k : Nat
 h : k = 2008 ^ 2 + 2 ^ 2008
 ⊢ ((2008 ^ 2 + 2 ^ 2008) ^ 2 + 2 ^ (2008 ^ 2 + 2 ^ 2008)) % 10 = 6
 ---
-warning: declaration uses 'sorry'
+warning: declaration uses `sorry`
 -/
 #guard_msgs in
 example (k : Nat) (h : k = 2008^2 + 2^2008) : (k^2 + 2^k)%10 = 6 := by

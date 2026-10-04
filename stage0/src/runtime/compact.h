@@ -53,10 +53,12 @@ public:
     void operator()(object * o);
     size_t size() const { return static_cast<char*>(m_end) - static_cast<char*>(m_begin); }
     void const * data() const { return m_begin; }
+    // Allocate `sz` bytes of zeroed memory.
     void * alloc(size_t sz);
 };
 
 class LEAN_EXPORT compacted_region {
+    size_t m_size;
     // see `object_compactor::m_base_addr`
     void * m_base_addr;
     bool m_is_mmap;
@@ -88,5 +90,6 @@ public:
     compacted_region operator=(compacted_region &&) = delete;
     object * read();
     bool is_memory_mapped() const { return m_is_mmap; }
+    size_t size() const { return m_size; }
 };
 }

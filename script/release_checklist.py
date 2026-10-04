@@ -1,5 +1,60 @@
 #!/usr/bin/env python3
 
+"""
+Release Checklist for Lean4 and Downstream Repositories
+
+This script validates the status of a Lean4 release across all dependent repositories.
+It checks whether repositories are ready for release and identifies missing steps.
+
+IMPORTANT: Keep this documentation up-to-date when modifying the script's behavior!
+
+What this script does:
+1. Validates preliminary Lean4 release infrastructure:
+   - Checks that the release branch (releases/vX.Y.0) exists
+   - Verifies CMake version settings are correct
+   - Confirms the release tag exists
+   - Validates the release page exists on GitHub (created automatically by CI after tag push)
+   - Checks the release notes page on lean-lang.org (updated while bumping the `reference-manual` repository)
+
+   **IMPORTANT: If the release page doesn't exist, the script will skip checking
+   downstream repositories and the master branch configuration. The preliminary
+   infrastructure must be in place before the release process can proceed.**
+
+   **NOTE: The GitHub release page is created AUTOMATICALLY by CI after the tag is pushed.
+   DO NOT create it manually. Wait for CI to complete after pushing the tag.**
+
+2. For each downstream repository (batteries, mathlib4, etc.):
+   - Checks if dependencies are ready (e.g., mathlib4 depends on batteries)
+   - Verifies the main branch is on the target toolchain (or newer)
+   - Checks if a PR exists to bump the toolchain (if not yet updated)
+   - Validates tags exist for the release version
+   - Ensures tags are merged into stable branches (for non-RC releases)
+   - Verifies bump branches exist and are configured correctly
+   - Special handling for ProofWidgets4 release tags
+   - For mathlib4: runs verify_version_tags.py to validate the release tag
+     (checks git/GitHub consistency, toolchain, elan, cache, and build)
+
+3. Optionally automates missing steps (when not in --dry-run mode):
+   - Creates missing release tags using push_repo_release_tag.py
+   - Merges tags into stable branches using merge_remote.py
+
+Usage:
+    ./release_checklist.py v4.24.0           # Check release status
+    ./release_checklist.py v4.24.0 --verbose # Show detailed debug info
+    ./release_checklist.py v4.24.0 --dry-run # Check only, don't execute fixes
+
+For automated release management with Claude Code:
+    /release v4.24.0                 # Run full release process with Claude
+
+The script reads repository configurations from release_repos.yml and reports:
+- ✅ for completed requirements
+- ❌ for missing requirements (with instructions to fix)
+- 🟡 for repositories waiting on dependencies
+- ⮕ for automated actions being taken
+
+This script is idempotent and safe to rerun multiple times.
+"""
+
 import argparse
 import yaml
 import requests
@@ -7,6 +62,7 @@ import base64
 import subprocess
 import sys
 import os
+import re # Import re module
 # Import run_command from merge_remote.py
 from merge_remote import run_command
 
@@ -52,19 +108,82 @@ def tag_exists(repo_url, tag_name, github_token):
     matching_tags = response.json()
     return any(tag["ref"] == f"refs/tags/{tag_name}" for tag in matching_tags)
 
+def commit_hash_for_tag(repo_url, tag_name, github_token):
+    # Use /git/matching-refs/tags/ to get all matching tags
+    api_url = repo_url.replace("https://github.com/", "https://api.github.com/repos/") + f"/git/matching-refs/tags/{tag_name}"
+    headers = {'Authorization': f'token {github_token}'} if github_token else {}
+    response = requests.get(api_url, headers=headers)
+
+    if response.status_code != 200:
+        return False
+
+    # Check if any of the returned refs exactly match our tag
+    matching_tags = response.json()
+    matching_commits = [tag["object"]["sha"] for tag in matching_tags if tag["ref"] == f"refs/tags/{tag_name}"]
+    if len(matching_commits) != 1:
+        return None
+    else:
+        return matching_commits[0]
+
 def release_page_exists(repo_url, tag_name, github_token):
     api_url = repo_url.replace("https://github.com/", "https://api.github.com/repos/") + f"/releases/tags/{tag_name}"
     headers = {'Authorization': f'token {github_token}'} if github_token else {}
     response = requests.get(api_url, headers=headers)
     return response.status_code == 200
 
-def get_release_notes(repo_url, tag_name, github_token):
-    api_url = repo_url.replace("https://github.com/", "https://api.github.com/repos/") + f"/releases/tags/{tag_name}"
+def get_tag_workflow_status(repo_url, tag_name, github_token):
+    """Get the status of CI workflows running for a specific tag."""
+    api_base = repo_url.replace("https://github.com/", "https://api.github.com/repos/")
     headers = {'Authorization': f'token {github_token}'} if github_token else {}
+
+    # Get workflow runs for the tag
+    # GitHub's workflow runs API uses the branch/tag name in the 'head_branch' field
+    api_url = f"{api_base}/actions/runs?event=push&head_branch={tag_name}"
     response = requests.get(api_url, headers=headers)
-    if response.status_code == 200:
-        return response.json().get("body", "").strip()
-    return None
+
+    if response.status_code != 200:
+        return None
+
+    data = response.json()
+    workflow_runs = data.get('workflow_runs', [])
+
+    if not workflow_runs:
+        return None
+
+    # Get the most recent workflow run for this tag
+    run = workflow_runs[0]
+    status = run.get('status')
+    conclusion = run.get('conclusion')
+    workflow_name = run.get('name', 'CI')
+    run_id = run.get('id')
+
+    return {
+        'status': status,
+        'conclusion': conclusion,
+        'workflow_name': workflow_name,
+        'run_id': run_id
+    }
+
+def get_release_notes(tag_name):
+    """Fetch release notes page title from lean-lang.org."""
+    # Strip -rcX suffix if present for the URL
+    base_tag = tag_name.split('-')[0]
+    reference_url = f"https://lean-lang.org/doc/reference/latest/releases/{base_tag}/"
+    try:
+        response = requests.get(reference_url)
+        response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+
+        # Extract title using regex
+        match = re.search(r"<title>(.*?)</title>", response.text, re.IGNORECASE | re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        else:
+            return None
+
+    except requests.exceptions.RequestException:
+        return None
+    except Exception:
+        return None
 
 def get_branch_content(repo_url, branch, file_path, github_token):
     api_url = repo_url.replace("https://github.com/", "https://api.github.com/repos/") + f"/contents/{file_path}?ref={branch}"
@@ -197,6 +316,43 @@ def get_next_version(version):
     # Next version is always .0
     return f"v{major}.{minor + 1}.0"
 
+def get_latest_nightly_tag(github_token):
+    """Get the most recent nightly tag from leanprover/lean4-nightly."""
+    api_url = "https://api.github.com/repos/leanprover/lean4-nightly/tags"
+    headers = {'Authorization': f'token {github_token}'} if github_token else {}
+    response = requests.get(api_url, headers=headers)
+    if response.status_code != 200:
+        return None
+    tags = response.json()
+    if not tags:
+        return None
+    # Return the most recent tag name
+    return tags[0]['name']
+
+def update_lean_toolchain_in_branch(org_repo, branch, toolchain_content, github_token):
+    """Update the lean-toolchain file in a specific branch."""
+    api_url = f"https://api.github.com/repos/{org_repo}/contents/lean-toolchain"
+    headers = {'Authorization': f'token {github_token}'} if github_token else {}
+    
+    # First get the current file to get its SHA
+    response = requests.get(f"{api_url}?ref={branch}", headers=headers)
+    if response.status_code != 200:
+        return False
+    
+    current_file = response.json()
+    file_sha = current_file['sha']
+    
+    # Update the file
+    update_data = {
+        "message": f"chore: update lean-toolchain to {toolchain_content}",
+        "content": base64.b64encode(toolchain_content.encode('utf-8')).decode('utf-8'),
+        "sha": file_sha,
+        "branch": branch
+    }
+    
+    response = requests.put(api_url, json=update_data, headers=headers)
+    return response.status_code in [200, 201]
+
 def check_bump_branch_toolchain(url, bump_branch, github_token):
     """Check if the lean-toolchain file in bump branch starts with either 'leanprover/lean4:nightly-' or the next version."""
     content = get_branch_content(url, bump_branch, "lean-toolchain", github_token)
@@ -215,6 +371,68 @@ def check_bump_branch_toolchain(url, bump_branch, github_token):
     print(f"  ✅ Bump branch correctly uses toolchain: {content}")
     return True
 
+def get_pr_ci_status(repo_url, pr_number, github_token):
+    """Get the CI status for a pull request."""
+    api_base = repo_url.replace("https://github.com/", "https://api.github.com/repos/")
+    headers = {'Authorization': f'token {github_token}'} if github_token else {}
+
+    # Get PR details to find the head SHA
+    pr_response = requests.get(f"{api_base}/pulls/{pr_number}", headers=headers)
+    if pr_response.status_code != 200:
+        return "unknown", "Could not fetch PR details"
+
+    pr_data = pr_response.json()
+    head_sha = pr_data['head']['sha']
+
+    # Get check runs for the commit
+    check_runs_response = requests.get(
+        f"{api_base}/commits/{head_sha}/check-runs",
+        headers=headers
+    )
+
+    if check_runs_response.status_code != 200:
+        return "unknown", "Could not fetch check runs"
+
+    check_runs_data = check_runs_response.json()
+    check_runs = check_runs_data.get('check_runs', [])
+
+    if not check_runs:
+        # No check runs, check for status checks (legacy)
+        status_response = requests.get(
+            f"{api_base}/commits/{head_sha}/status",
+            headers=headers
+        )
+        if status_response.status_code == 200:
+            status_data = status_response.json()
+            state = status_data.get('state', 'unknown')
+            if state == 'success':
+                return "success", "All status checks passed"
+            elif state == 'failure':
+                return "failure", "Some status checks failed"
+            elif state == 'pending':
+                return "pending", "Status checks in progress"
+        return "unknown", "No CI checks found"
+
+    # Analyze check runs
+    conclusions = [run['conclusion'] for run in check_runs if run.get('status') == 'completed']
+    in_progress = [run for run in check_runs if run.get('status') in ['queued', 'in_progress']]
+
+    if in_progress:
+        return "pending", f"{len(in_progress)} check(s) in progress"
+
+    if not conclusions:
+        return "pending", "Checks queued"
+
+    if all(c == 'success' for c in conclusions):
+        return "success", f"All {len(conclusions)} checks passed"
+
+    failed = sum(1 for c in conclusions if c in ['failure', 'timed_out', 'action_required'])
+    if failed > 0:
+        return "failure", f"{failed} check(s) failed"
+
+    # Some checks are cancelled, skipped, or neutral
+    return "warning", f"Some checks did not complete normally"
+
 def pr_exists_with_title(repo_url, title, github_token):
     api_url = repo_url.replace("https://github.com/", "https://api.github.com/repos/") + "/pulls"
     headers = {'Authorization': f'token {github_token}'} if github_token else {}
@@ -227,6 +445,112 @@ def pr_exists_with_title(repo_url, title, github_token):
         if pr['title'] == title:
             return pr['number'], pr['html_url']
     return None
+
+def check_proofwidgets4_release(repo_url, target_toolchain, github_token):
+    """Check if ProofWidgets4 has a release tag that uses the target toolchain."""
+    api_base = repo_url.replace("https://github.com/", "https://api.github.com/repos/")
+    headers = {'Authorization': f'token {github_token}'} if github_token else {}
+    
+    # Get all tags matching v0.0.* pattern
+    response = requests.get(f"{api_base}/git/matching-refs/tags/v0.0.", headers=headers)
+    if response.status_code != 200:
+        print(f"  ❌ Could not fetch ProofWidgets4 tags")
+        return False
+    
+    tags = response.json()
+    if not tags:
+        print(f"  ❌ No v0.0.* tags found for ProofWidgets4")
+        return False
+    
+    # Extract tag names and sort by version number (descending)
+    tag_names = []
+    for tag in tags:
+        ref = tag['ref']
+        if ref.startswith('refs/tags/v0.0.'):
+            tag_name = ref.replace('refs/tags/', '')
+            try:
+                # Extract the number after v0.0.
+                version_num = int(tag_name.split('.')[-1])
+                tag_names.append((version_num, tag_name))
+            except (ValueError, IndexError):
+                continue
+    
+    if not tag_names:
+        print(f"  ❌ No valid v0.0.* tags found for ProofWidgets4")
+        return False
+    
+    # Sort by version number (descending) and take the most recent 10
+    tag_names.sort(reverse=True)
+    recent_tags = tag_names[:10]
+    
+    # Check each recent tag to see if it uses the target toolchain
+    for version_num, tag_name in recent_tags:
+        toolchain_content = get_branch_content(repo_url, tag_name, "lean-toolchain", github_token)
+        if toolchain_content is None:
+            continue
+        
+        if is_version_gte(toolchain_content.strip(), target_toolchain):
+            print(f"  ✅ Found release {tag_name} using compatible toolchain (>= {target_toolchain})")
+            return True
+    
+    # If we get here, no recent release uses the target toolchain
+    # Find the highest version number to suggest the next one
+    highest_version = max(version_num for version_num, _ in recent_tags)
+    next_version = highest_version + 1
+    print(f"  ❌ No recent ProofWidgets4 release uses toolchain >= {target_toolchain}")
+    print(f"     You will need to create and push a tag v0.0.{next_version}")
+    return False
+
+def run_mathlib_verify_version_tags(toolchain, verbose=False):
+    """Run mathlib4's verify_version_tags.py script to validate the release tag.
+
+    This clones mathlib4 to a temp directory and runs the verification script.
+    Returns True if verification passes, False otherwise.
+    """
+    import tempfile
+
+    print(f"  ... Running mathlib4 verify_version_tags.py {toolchain}")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Clone mathlib4 (shallow clone is sufficient for running the script)
+        clone_result = subprocess.run(
+            ['git', 'clone', '--depth', '1', 'https://github.com/leanprover-community/mathlib4.git', tmpdir],
+            capture_output=True,
+            text=True
+        )
+        if clone_result.returncode != 0:
+            print(f"  ❌ Failed to clone mathlib4: {clone_result.stderr.strip()[:200]}")
+            return False
+
+        # Run the verification script
+        script_path = os.path.join(tmpdir, 'scripts', 'verify_version_tags.py')
+        if not os.path.exists(script_path):
+            print(f"  ❌ verify_version_tags.py not found in mathlib4 (expected at scripts/verify_version_tags.py)")
+            return False
+
+        # Run from the mathlib4 directory so git operations work
+        result = subprocess.run(
+            ['python3', script_path, toolchain],
+            cwd=tmpdir,
+            capture_output=True,
+            text=True,
+            timeout=900  # 15 minutes timeout for cache download etc.
+        )
+
+        # Print output with indentation
+        if result.stdout:
+            for line in result.stdout.strip().split('\n'):
+                print(f"     {line}")
+        if result.stderr:
+            for line in result.stderr.strip().split('\n'):
+                print(f"     {line}")
+
+        if result.returncode != 0:
+            print(f"  ❌ mathlib4 verify_version_tags.py failed")
+            return False
+
+        print(f"  ✅ mathlib4 verify_version_tags.py passed")
+        return True
 
 def main():
     parser = argparse.ArgumentParser(description="Check release status of Lean4 repositories")
@@ -255,6 +579,7 @@ def main():
     branch_name = f"releases/v{version_major}.{version_minor}.0"
     if not branch_exists(lean_repo_url, branch_name, github_token):
         print(f"  ❌ Branch {branch_name} does not exist")
+        print(f"  🟡 After creating the branch, we'll need to check CMake version settings.")
         lean4_success = False
     else:
         print(f"  ✅ Branch {branch_name} exists")
@@ -268,22 +593,65 @@ def main():
         lean4_success = False
     else:
         print(f"  ✅ Tag {toolchain} exists")
+        commit_hash = commit_hash_for_tag(lean_repo_url, toolchain, github_token)
+        SHORT_HASH_LENGTH = 7 # Lake abbreviates the Lean commit to 7 characters.
+        if commit_hash is None:
+            print(f"  ❌ Could not resolve tag {toolchain} to a commit.")
+            lean4_success = False
+        elif commit_hash[0] == '0' and commit_hash[:SHORT_HASH_LENGTH].isnumeric():
+            print(f"  ❌ Short commit hash {commit_hash[:SHORT_HASH_LENGTH]} is numeric and starts with 0, causing issues for version parsing. Try regenerating the last commit to get a new hash.")
+            lean4_success = False
 
-    if not release_page_exists(lean_repo_url, toolchain, github_token):
-        print(f"  ❌ Release page for {toolchain} does not exist")
+    release_page_ready = release_page_exists(lean_repo_url, toolchain, github_token)
+    if not release_page_ready:
+        print(f"  ❌ Release page for {toolchain} does not exist (This will be created by CI.)")
+
+        # Check CI workflow status
+        workflow_status = get_tag_workflow_status(lean_repo_url, toolchain, github_token)
+        if workflow_status:
+            status = workflow_status['status']
+            conclusion = workflow_status['conclusion']
+            workflow_name = workflow_status['workflow_name']
+            run_id = workflow_status['run_id']
+            workflow_url = f"{lean_repo_url}/actions/runs/{run_id}"
+
+            if status == 'in_progress' or status == 'queued':
+                print(f"     🔄 {workflow_name} workflow is {status}: {workflow_url}")
+            elif status == 'completed':
+                if conclusion == 'success':
+                    print(f"     ✅ {workflow_name} workflow completed successfully: {workflow_url}")
+                elif conclusion == 'failure':
+                    print(f"     ❌ {workflow_name} workflow failed: {workflow_url}")
+                else:
+                    print(f"     ⚠️  {workflow_name} workflow completed with status: {conclusion}: {workflow_url}")
+            else:
+                print(f"     ℹ️  {workflow_name} workflow status: {status}: {workflow_url}")
+
         lean4_success = False
     else:
         print(f"  ✅ Release page for {toolchain} exists")
-        release_notes = get_release_notes(lean_repo_url, toolchain, github_token)
-        if not (release_notes and toolchain in release_notes.splitlines()[0].strip()):
-            previous_minor_version = version_minor - 1
-            previous_release = f"v{version_major}.{previous_minor_version}.0"
-            print(f"  ❌ Release notes not published. Please run `script/release_notes.py --since {previous_release}` on branch `{branch_name}`.")
-            lean4_success = False
-        else:
-            print(f"  ✅ Release notes look good.")
+
+    # Check the actual release notes page title (informational only - does not block)
+    actual_title = get_release_notes(toolchain)
+    expected_title_prefix = f"Lean {toolchain.lstrip('v')}" # e.g., "Lean 4.19.0" or "Lean 4.19.0-rc1"
+    base_tag = toolchain.split('-')[0]
+    release_notes_url = f"https://lean-lang.org/doc/reference/latest/releases/{base_tag}/"
+
+    if actual_title is None:
+        print(f"  ⚠️  Release notes not found at {release_notes_url} (this will be fixed while updating the reference-manual repository)")
+    elif not actual_title.startswith(expected_title_prefix):
+        print(f"  ⚠️  Release notes page title mismatch. Expected prefix '{expected_title_prefix}', got '{actual_title}'. Check {release_notes_url}")
+    else:
+        print(f"  ✅ Release notes page title looks good ('{actual_title}').")
 
     repo_status["lean4"] = lean4_success
+
+    # If the release page doesn't exist, skip repository checks and master branch checks
+    # The preliminary infrastructure must be in place first
+    if not release_page_exists(lean_repo_url, toolchain, github_token):
+        print("\n⚠️  Release process blocked: preliminary Lean4 infrastructure incomplete.")
+        print("   Complete the steps above, then rerun this script to proceed with downstream repositories.")
+        return
 
     # Load repositories and perform further checks
     print("\nChecking repositories...")
@@ -328,12 +696,31 @@ def main():
             if pr_info:
                 pr_number, pr_url = pr_info
                 print(f"  ✅ PR with title '{pr_title}' exists: #{pr_number} ({pr_url})")
+
+                # Check CI status
+                ci_status, ci_message = get_pr_ci_status(url, pr_number, github_token)
+                if ci_status == "success":
+                    print(f"     ✅ CI: {ci_message}")
+                elif ci_status == "failure":
+                    print(f"     ❌ CI: {ci_message}")
+                elif ci_status == "pending":
+                    print(f"     🔄 CI: {ci_message}")
+                elif ci_status == "warning":
+                    print(f"     ⚠️  CI: {ci_message}")
+                else:
+                    print(f"     ❓ CI: {ci_message}")
             else:
                 print(f"  ❌ PR with title '{pr_title}' does not exist")
                 print(f"     Run `script/release_steps.py {toolchain} {name}` to create it")
             repo_status[name] = False
             continue
         print(f"  ✅ On compatible toolchain (>= {toolchain})")
+
+        # Special handling for ProofWidgets4
+        if name == "ProofWidgets4":
+            if not check_proofwidgets4_release(url, toolchain, github_token):
+                repo_status[name] = False
+                continue
 
         if check_tag:
             tag_exists_initially = tag_exists(url, toolchain, github_token)
@@ -343,7 +730,7 @@ def main():
                     repo_status[name] = False
                     continue
                 else:
-                    print(f"  … Tag {toolchain} does not exist. Running `script/push_repo_release_tag.py {org_repo} {branch} {toolchain}`...")
+                    print(f"  ⮕ Tag {toolchain} does not exist. Running `script/push_repo_release_tag.py {org_repo} {branch} {toolchain}`...")
                     
                     # Run the script to create the tag
                     subprocess.run(["script/push_repo_release_tag.py", org_repo, branch, toolchain])
@@ -360,28 +747,78 @@ def main():
         if check_stable and not is_release_candidate(toolchain):
             if not is_merged_into_stable(url, toolchain, "stable", github_token, verbose):
                 org_repo = extract_org_repo_from_url(url)
-                print(f"  ❌ Tag {toolchain} is not merged into stable")
-                print(f"     Run `script/merge_remote.py {org_repo} stable {toolchain}` to merge it")
-                repo_status[name] = False
-                continue
+                if args.dry_run:
+                    print(f"  ❌ Tag {toolchain} is not merged into stable")
+                    print(f"     Run `script/merge_remote.py {org_repo} stable {toolchain}` to merge it")
+                    repo_status[name] = False
+                    continue
+                else:
+                    print(f"  ⮕ Tag {toolchain} is not merged into stable. Running `script/merge_remote.py {org_repo} stable {toolchain}`...")
+                    
+                    # Run the script to merge the tag
+                    subprocess.run(["script/merge_remote.py", org_repo, "stable", toolchain])
+                    
+                    # Check again if the tag is merged now
+                    if not is_merged_into_stable(url, toolchain, "stable", github_token, verbose):
+                        print(f"  ❌ Manual intervention required.")
+                        repo_status[name] = False
+                        continue
+            
+            # This will print in all successful cases - whether tag was merged initially or was merged successfully
             print(f"  ✅ Tag {toolchain} is merged into stable")
 
         if check_bump:
             next_version = get_next_version(toolchain)
             bump_branch = f"bump/{next_version}"
-            if not branch_exists(url, bump_branch, github_token):
+            
+            # For mathlib4, use the nightly-testing fork for bump branches
+            bump_org_repo = org_repo
+            bump_url = url
+            if name == "mathlib4":
+                bump_org_repo = "leanprover-community/mathlib4-nightly-testing"
+                bump_url = "https://github.com/leanprover-community/mathlib4-nightly-testing"
+            
+            branch_created = False
+            if not branch_exists(bump_url, bump_branch, github_token):
                 if args.dry_run:
-                    print(f"  ❌ Bump branch {bump_branch} does not exist. Run `gh api -X POST /repos/{org_repo}/git/refs -f ref=refs/heads/{bump_branch} -f sha=$(gh api /repos/{org_repo}/git/refs/heads/{branch} --jq .object.sha)` to create it.")
+                    latest_nightly = get_latest_nightly_tag(github_token)
+                    nightly_note = f" (will set lean-toolchain to {latest_nightly})" if name in ["batteries", "mathlib4"] and latest_nightly else ""
+                    print(f"  ❌ Bump branch {bump_branch} does not exist. Run `gh api -X POST /repos/{bump_org_repo}/git/refs -f ref=refs/heads/{bump_branch} -f sha=$(gh api /repos/{org_repo}/git/refs/heads/{branch} --jq .object.sha)` to create it{nightly_note}.")
                     repo_status[name] = False
                     continue
-                print(f"  … Bump branch {bump_branch} does not exist. Creating it...")
-                result = run_command(f"gh api -X POST /repos/{org_repo}/git/refs -f ref=refs/heads/{bump_branch} -f sha=$(gh api /repos/{org_repo}/git/refs/heads/{branch} --jq .object.sha)", check=False)
+                print(f"  ⮕ Bump branch {bump_branch} does not exist. Creating it...")
+                result = run_command(f"gh api -X POST /repos/{bump_org_repo}/git/refs -f ref=refs/heads/{bump_branch} -f sha=$(gh api /repos/{org_repo}/git/refs/heads/{branch} --jq .object.sha)", check=False)
                 if result.returncode != 0:
                     print(f"  ❌ Failed to create bump branch {bump_branch}")
                     repo_status[name] = False
                     continue
+                branch_created = True
+            
             print(f"  ✅ Bump branch {bump_branch} exists")
-            if not check_bump_branch_toolchain(url, bump_branch, github_token):
+            
+            # For batteries and mathlib4, update the lean-toolchain to the latest nightly
+            if branch_created and name in ["batteries", "mathlib4"]:
+                latest_nightly = get_latest_nightly_tag(github_token)
+                if latest_nightly:
+                    nightly_toolchain = f"leanprover/lean4:{latest_nightly}"
+                    print(f"  ⮕ Updating lean-toolchain to {nightly_toolchain}...")
+                    if update_lean_toolchain_in_branch(bump_org_repo, bump_branch, nightly_toolchain, github_token):
+                        print(f"  ✅ Updated lean-toolchain to {nightly_toolchain}")
+                    else:
+                        print(f"  ❌ Failed to update lean-toolchain to {nightly_toolchain}")
+                        repo_status[name] = False
+                        continue
+                else:
+                    print(f"  ❌ Could not fetch latest nightly tag")
+                    repo_status[name] = False
+                    continue
+            if not check_bump_branch_toolchain(bump_url, bump_branch, github_token):
+                repo_status[name] = False
+                continue
+
+        # For mathlib4, run verify_version_tags.py to validate the release tag
+        if name == "mathlib4":
+            if not run_mathlib_verify_version_tags(toolchain, verbose):
                 repo_status[name] = False
                 continue
 

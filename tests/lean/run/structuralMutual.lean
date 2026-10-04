@@ -73,14 +73,15 @@ theorem B_size_eq3 : B.empty.size = 0  := rfl
 -- Smart unfolding works
 
 /--
-info: a : A
-h : (B.other a).size = 1
+trace: a : A
+h : (B.other a).size.add 0 = 1
 ⊢ a.size = 0
 -/
 #guard_msgs in
 theorem ex1 (a : A) (h : (A.other (B.other a)).size = 2) : a.size = 0 := by
   injection h with h
   trace_state -- without smart unfolding the state would be a mess
+  dsimp [Nat.add_zero] at h
   injection h with h
 
 -- And it computes in type just fine
@@ -249,7 +250,7 @@ theorem eq_true_of_not_eq_false {b : Bool} : (! b) = false → b = true := by si
 theorem eq_false_of_not_eq_true {b : Bool} : (! b) = true → b = false := by simp
 
 /--
-info: n : Nat
+trace: n : Nat
 h : isOdd (n + 1) = false
 ⊢ isEven n = true
 -/
@@ -511,13 +512,13 @@ Too many possible combinations of parameters of type Nattish (or please indicate
 Could not find a decreasing measure.
 The basic measures relate at each recursive call as follows:
 (<, ≤, =: relation proved, ? all proofs failed, _: no proof attempted)
-Call from ManyCombinations.f to ManyCombinations.g at 543:15-29:
+Call from ManyCombinations.f to ManyCombinations.g at 544:15-29:
    #1 #2 #3 #4
 #5  ?  ?  ?  ?
 #6  ?  ?  =  ?
 #7  ?  ?  ?  =
 #8  ?  =  ?  ?
-Call from ManyCombinations.g to ManyCombinations.f at 546:15-29:
+Call from ManyCombinations.g to ManyCombinations.f at 547:15-29:
    #5 #6 #7 #8
 #1  _  _  _  _
 #2  _  _  _  ?

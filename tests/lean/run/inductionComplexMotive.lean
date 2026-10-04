@@ -22,7 +22,7 @@ theorem ackermann_induct_unfolding (motive : Nat → Nat → Nat → Prop) (case
      n m
 
 /--
-error: tactic 'fail' failed
+error: Failed: `fail` tactic was invoked
 case case1
 m✝ : Nat
 ⊢ m✝ + 1 ≤ ackermann (0 + 1) m✝
@@ -58,7 +58,7 @@ theorem ackermann_cases_unfolding (motive : Nat → Nat → Nat → Prop)
      n m
 
 /--
-error: tactic 'fail' failed
+error: Failed: `fail` tactic was invoked
 case case1
 m : Nat
 ⊢ m + 1 ≤ ackermann (0 + 1) m
@@ -71,7 +71,7 @@ case case3
 n✝ m✝ : Nat
 ⊢ ackermann n✝ (ackermann (n✝ + 1) m✝) ≤ ackermann (n✝.succ + 1) m✝.succ
 -/
-#guard_msgs in
+#guard_msgs(pass trace, all) in
 example : ackermann n m ≤ ackermann (n+1) m := by
   cases n, m using ackermann_cases_unfolding
   fail
@@ -84,7 +84,7 @@ axiom strange_induction
   ∀ n, motive n (n-1 ≤ n) (n+1)
 
 /--
-error: tactic 'fail' failed
+error: Failed: `fail` tactic was invoked
 case case1
 ⊢ True ∧ 0 < 42
 -/
@@ -94,7 +94,7 @@ example : n -1 ≤ n ∧ n < n +1 := by
   fail
 
 /--
-error: tactic 'fail' failed
+error: Failed: `fail` tactic was invoked
 case case1
 ⊢ True ∧ 0 < 42
 -/
@@ -104,7 +104,7 @@ example : n -1 ≤ n ∧ n < n +1 := by
   fail
 
 /--
-error: tactic 'fail' failed
+error: Failed: `fail` tactic was invoked
 case case1
 n : Nat
 ⊢ n - 1 ≤ n ∧ n < 0
@@ -114,11 +114,11 @@ example : n -1 ≤ n ∧ n < n + 1 := by
   cases n+1 using strange_induction
   fail
 
--- And now one where abstracing would cause a type error
--- (induction silently skips abstracing over these)
+-- And now one where abstracting would cause a type error
+-- (induction silently skips abstracting over these)
 
 /--
-error: tactic 'fail' failed
+error: Failed: `fail` tactic was invoked
 case case1
 P : (n : Nat) → n > 0 → Prop
 ⊢ P (0 + 1) ⋯
@@ -129,7 +129,7 @@ example (P : (n : Nat) → (h : n > 0) → Prop) : P (n + 1) (Nat.zero_lt_succ n
   fail
 
 /--
-error: tactic 'fail' failed
+error: Failed: `fail` tactic was invoked
 case case1
 P : (n : Nat) → n > 0 → Prop
 ⊢ P (0 + 1) ⋯
@@ -137,4 +137,51 @@ P : (n : Nat) → n > 0 → Prop
 #guard_msgs in
 example (P : (n : Nat) → (h : n > 0) → Prop) : P (n + 1) (Nat.zero_lt_succ n) := by
   cases n using strange_induction
+  fail
+
+-- One where the type of the complex argument depends on the other targets
+
+axiom dep_induction
+  {motive : (n : Nat) → Fin (n+1) → Prop}
+  (case1 : motive 0 0) :
+  ∀ n, motive n (Fin.last n)
+
+/--
+error: Failed: `fail` tactic was invoked
+case case1
+P : (n : Nat) → Fin (n + 1) → Prop
+⊢ P 0 0
+-/
+#guard_msgs in
+example (P : (n : Nat) → Fin (n+1) → Prop) : P n (Fin.last n) := by
+  induction n using dep_induction
+  fail
+
+
+-- Using cases does not unfold as expected, due to the dependent motive.
+-- This can be improved, but at least it does not error
+
+/--
+error: Failed: `fail` tactic was invoked
+case case1
+P : (n : Nat) → Fin (n + 1) → Prop
+⊢ P 0 (Fin.last 0)
+-/
+#guard_msgs in
+example (P : (n : Nat) → Fin (n+1) → Prop) : P n (Fin.last n) := by
+  cases n using dep_induction
+  fail
+
+-- Using cases does not unfold as expected, due to the dependent motive.
+-- This can be improved, but at least it does not error
+
+/--
+error: Failed: `fail` tactic was invoked
+case case1
+P : (n : Nat) → Fin (n + 1) → Prop
+⊢ P 0 (Fin.last 0)
+-/
+#guard_msgs(pass trace, all) in
+example (P : (n : Nat) → Fin (n+1) → Prop) : P 10 (Fin.last 10) := by
+  cases 10 using dep_induction
   fail

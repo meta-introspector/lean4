@@ -6,7 +6,9 @@ Author: Leonardo de Moura
 module
 
 prelude
-import Init.Data.UInt.BasicAux
+public import Init.Data.UInt.BasicAux
+
+@[expose] public section
 
 /-- Determines if the given integer is a valid [Unicode scalar value](https://www.unicode.org/glossary/#unicode_scalar_value).
 
@@ -20,13 +22,13 @@ namespace Char
 /--
 One character is less than another if its code point is strictly less than the other's.
 -/
-protected def lt (a b : Char) : Prop := a.val < b.val
+@[expose] protected def lt (a b : Char) : Prop := a.val < b.val
 
 /--
 One character is less than or equal to another if its code point is less than or equal to the
 other's.
 -/
-protected def le (a b : Char) : Prop := a.val ≤ b.val
+@[expose] protected def le (a b : Char) : Prop := a.val ≤ b.val
 
 instance : LT Char := ⟨Char.lt⟩
 instance : LE Char := ⟨Char.le⟩
@@ -100,7 +102,7 @@ Returns `true` if the character is a uppercase ASCII letter.
 The uppercase ASCII letters are the following: `ABCDEFGHIJKLMNOPQRSTUVWXYZ`.
 -/
 @[inline] def isUpper (c : Char) : Bool :=
-  c.val ≥ 65 && c.val ≤ 90
+  c.val ≥ 'A'.val ∧ c.val ≤ 'Z'.val
 
 /--
 Returns `true` if the character is a lowercase ASCII letter.
@@ -108,7 +110,7 @@ Returns `true` if the character is a lowercase ASCII letter.
 The lowercase ASCII letters are the following: `abcdefghijklmnopqrstuvwxyz`.
 -/
 @[inline] def isLower (c : Char) : Bool :=
-  c.val ≥ 97 && c.val ≤ 122
+  c.val ≥ 'a'.val && c.val ≤ 'z'.val
 
 /--
 Returns `true` if the character is an ASCII letter.
@@ -124,7 +126,7 @@ Returns `true` if the character is an ASCII digit.
 The ASCII digits are the following: `0123456789`.
 -/
 @[inline] def isDigit (c : Char) : Bool :=
-  c.val ≥ 48 && c.val ≤ 57
+  c.val ≥ '0'.val && c.val ≤ '9'.val
 
 /--
 Returns `true` if the character is an ASCII letter or digit.
@@ -141,9 +143,16 @@ alphabet are returned unchanged.
 
 The uppercase ASCII letters are the following: `ABCDEFGHIJKLMNOPQRSTUVWXYZ`.
 -/
+@[inline]
 def toLower (c : Char) : Char :=
-  let n := toNat c;
-  if n >= 65 ∧ n <= 90 then ofNat (n + 32) else c
+  if h : c.val ≥ 'A'.val ∧ c.val ≤ 'Z'.val then
+    ⟨c.val + ('a'.val - 'A'.val), ?_⟩
+  else
+    c
+where finally
+  have h : c.val.toBitVec.toNat + ('a'.val - 'A'.val).toBitVec.toNat < 0xd800 :=
+    Nat.add_lt_add_right (Nat.lt_of_le_of_lt h.2 (by decide)) _
+  exact .inl (lt_of_eq_of_lt (Nat.mod_eq_of_lt (Nat.lt_trans h (by decide))) h)
 
 /--
 Converts a lowercase ASCII letter to the corresponding uppercase letter. Letters outside the ASCII
@@ -151,8 +160,20 @@ alphabet are returned unchanged.
 
 The lowercase ASCII letters are the following: `abcdefghijklmnopqrstuvwxyz`.
 -/
+@[inline]
 def toUpper (c : Char) : Char :=
-  let n := toNat c;
-  if n >= 97 ∧ n <= 122 then ofNat (n - 32) else c
+  if h : c.val ≥ 'a'.val ∧ c.val ≤ 'z'.val then
+    ⟨c.val + ('A'.val - 'a'.val), ?_⟩
+  else
+    c
+where finally
+  have h₁ : 2^32 ≤ c.val.toNat + ('A'.val - 'a'.val).toNat :=
+    @Nat.add_le_add 'a'.val.toNat _ (2^32 - 'a'.val.toNat) _ h.1 (by decide)
+  have h₂ : c.val.toBitVec.toNat + ('A'.val - 'a'.val).toNat < 2^32 + 0xd800 :=
+    Nat.add_lt_add_right (Nat.lt_of_le_of_lt h.2 (by decide)) _
+  have add_eq {x y : UInt32} : (x + y).toNat = (x.toNat + y.toNat) % 2^32 := rfl
+  replace h₂ := Nat.sub_lt_left_of_lt_add h₁ h₂
+  exact .inl <| lt_of_eq_of_lt (add_eq.trans (Nat.mod_eq_sub_mod h₁) |>.trans
+    (Nat.mod_eq_of_lt (Nat.lt_trans h₂ (by decide)))) h₂
 
 end Char
